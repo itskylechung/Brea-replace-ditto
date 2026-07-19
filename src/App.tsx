@@ -1,11 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "./auth/AuthContext";
 import { BreaMark } from "./components/BreaMark";
 import { EmptyState } from "./components/EmptyState";
 import { PersonCard } from "./components/PersonCard";
+import { ProfileSetup } from "./components/ProfileSetup";
 import { SearchForm } from "./components/SearchForm";
-import { searchNearbyPeople, sendConnectionRequest } from "./lib/api";
-import { hasInsforgeConfig } from "./lib/insforge";
-import type { ConnectionUiState, PersonMatch, SearchStatus } from "./types";
+import { SignInScreen } from "./components/SignInScreen";
+import {
+  ensureCurrentProfile,
+  searchNearbyPeople,
+  sendConnectionRequest,
+  updateCurrentProfile,
+} from "./lib/api";
+import type {
+  BreaProfile,
+  ConnectionUiState,
+  PersonMatch,
+  ProfileUpdateInput,
+  SearchStatus,
+} from "./types";
 
 const DEFAULT_RADIUS_KM = 10;
 
@@ -14,6 +27,82 @@ function readableError(error: unknown, fallback: string): string {
 }
 
 export function App() {
+  const auth = useAuth();
+  const [profile, setProfile] = useState<BreaProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!auth.user) {
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+
+    setProfileLoading(true);
+    setProfileError(null);
+    void ensureCurrentProfile(auth.user)
+      .then((nextProfile) => {
+        if (!cancelled) setProfile(nextProfile);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setProfileError(readableError(error, "We could not load your profile."));
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.user]);
+
+  if (auth.isLoading || profileLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-cream text-forest" role="status">
+        <div className="text-center"><BreaMark /><p className="mt-5 text-sm text-moss">Preparing your private profile…</p></div>
+      </div>
+    );
+  }
+
+  if (!auth.user) {
+    return (
+      <SignInScreen
+        linkedinEnabled={auth.linkedinEnabled}
+        backendError={auth.error}
+        onSignIn={auth.signInWithLinkedIn}
+      />
+    );
+  }
+
+  if (profileError || !profile) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-cream px-5 text-center text-ink">
+        <div className="max-w-lg rounded-[2rem] bg-paper/70 p-8 shadow-card">
+          <BreaMark />
+          <h1 className="mt-7 text-2xl font-bold">Your profile could not be prepared</h1>
+          <p className="mt-3 text-sm leading-relaxed text-[#a44734]">{profileError ?? "No profile was returned."}</p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button type="button" onClick={() => window.location.reload()} className="rounded-full bg-forest px-5 py-2.5 text-sm font-bold text-white">Retry</button>
+            <button type="button" onClick={() => void auth.signOut()} className="rounded-full border border-forest/20 px-5 py-2.5 text-sm font-bold text-forest">Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile.onboardingCompleted) {
+    async function saveProfile(input: ProfileUpdateInput) {
+      if (!auth.user) return;
+      setProfile(await updateCurrentProfile(auth.user.id, input));
+    }
+    return <ProfileSetup profile={profile} onSave={saveProfile} onSignOut={auth.signOut} />;
+  }
+
+  return <DiscoveryApp profile={profile} onSignOut={auth.signOut} />;
+}
+
+function DiscoveryApp({ profile, onSignOut }: { profile: BreaProfile; onSignOut: () => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
   const [submittedQuery, setSubmittedQuery] = useState("");
@@ -110,10 +199,11 @@ export function App() {
       <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-6 sm:px-8 lg:px-10">
         <BreaMark />
         <div className="flex items-center gap-3">
-          <span className="hidden text-sm font-medium text-moss sm:inline">People worth meeting are closer than you think.</span>
-          <span className="rounded-full border border-forest/15 bg-paper/60 px-3 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.13em] text-forest">
-            MVP preview
-          </span>
+          {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" referrerPolicy="no-referrer" className="h-9 w-9 rounded-full object-cover" /> : null}
+          <span className="hidden text-sm font-bold text-forest sm:inline">{profile.name}</span>
+          <button type="button" onClick={() => void onSignOut()} className="rounded-full border border-forest/15 bg-paper/60 px-3 py-1.5 text-xs font-bold text-forest hover:bg-paper">
+            Sign out
+          </button>
         </div>
       </header>
 
@@ -158,12 +248,6 @@ export function App() {
 
         <section className="mt-10 rounded-[2rem] border border-paper/70 bg-paper/55 p-4 backdrop-blur-sm sm:p-7 lg:mt-14 lg:p-8" aria-labelledby="search-title">
           <h2 id="search-title" className="sr-only">Search for people nearby</h2>
-          {!hasInsforgeConfig && (
-            <div className="mb-5 flex items-start gap-3 rounded-2xl border border-[#d8aa4d]/30 bg-[#fff5d8] px-4 py-3 text-sm text-[#715719]" role="status">
-              <span className="mt-0.5" aria-hidden="true">●</span>
-              <p><strong>Backend handoff pending.</strong> The search experience is ready; add Kyle’s Preview InsForge URL and anon key to run live requests.</p>
-            </div>
-          )}
           <SearchForm
             query={query}
             radiusKm={radiusKm}
@@ -246,7 +330,7 @@ export function App() {
       <footer className="relative z-[1] border-t border-ink/10 px-5 py-7 text-sm text-moss sm:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p>© 2026 Brea · Built for meaningful proximity.</p>
-          <p className="max-w-xl text-xs leading-relaxed sm:text-right">MVP note: nearby is relative to a server-managed demo profile. No live GPS or account data is collected by this page.</p>
+          <p className="max-w-xl text-xs leading-relaxed sm:text-right">Your exact location is private. Other members see only your chosen profile details and approximate distance.</p>
         </div>
       </footer>
     </div>

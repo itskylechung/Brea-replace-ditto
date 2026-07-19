@@ -1,4 +1,4 @@
-import { createAdminClient } from "npm:@insforge/sdk@1.4.5";
+import { createAdminClient, createClient } from "npm:@insforge/sdk@1.4.5";
 
 const EARTH_RADIUS_KM = 6371.0088;
 const EXACT_PHRASE_BONUS = 8;
@@ -327,26 +327,31 @@ function isValidCoordinate(latitude: unknown, longitude: unknown): latitude is n
     longitude >= -180 && longitude <= 180;
 }
 
+export function bearerToken(headers: Headers): string | null {
+  const authorization = headers.get("Authorization")?.trim();
+  if (!authorization) return null;
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
 function configuration(): ValidationResult<{
   baseUrl: string;
   apiKey: string;
-  senderId: string;
 }> {
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")?.trim();
   const apiKey = Deno.env.get("API_KEY")?.trim();
-  const senderId = Deno.env.get("BREA_MVP_PROFILE_ID")?.trim();
 
-  if (!baseUrl || !apiKey || !senderId || !UUID_PATTERN.test(senderId)) {
+  if (!baseUrl || !apiKey) {
     return {
       ok: false,
       error: {
-        code: "MVP_PROFILE_UNAVAILABLE",
-        message: "The MVP search profile is unavailable.",
+        code: "SERVICE_UNAVAILABLE",
+        message: "Nearby search is temporarily unavailable.",
       },
     };
   }
 
-  return { ok: true, value: { baseUrl, apiKey, senderId } };
+  return { ok: true, value: { baseUrl, apiKey } };
 }
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -375,6 +380,32 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
+  const config = configuration();
+  if (!config.ok) {
+    return jsonResponse(config.error, 503, origin, allowedOrigins);
+  }
+
+  const accessToken = bearerToken(request.headers);
+  if (!accessToken) {
+    return jsonResponse(
+      { code: "AUTH_REQUIRED", message: "Sign in to search for nearby people." },
+      401,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
+  const { data: currentUserData, error: currentUserError } = await authClient.auth.getCurrentUser();
+  if (currentUserError || !currentUserData?.user) {
+    return jsonResponse(
+      { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
+      401,
+      origin,
+      allowedOrigins,
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -392,11 +423,6 @@ async function handleRequest(request: Request): Promise<Response> {
     return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
   }
 
-  const config = configuration();
-  if (!config.ok) {
-    return jsonResponse(config.error, 503, origin, allowedOrigins);
-  }
-
   const admin = createAdminClient({
     baseUrl: config.value.baseUrl,
     apiKey: config.value.apiKey,
@@ -404,8 +430,8 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const { data: senderData, error: senderError } = await admin.database
     .from("profiles")
-    .select("id, latitude, longitude")
-    .eq("id", config.value.senderId)
+    .select("id, latitude, longitude, onboarding_completed")
+    .eq("user_id", currentUserData.user.id)
     .maybeSingle();
 
   if (senderError) {
@@ -418,12 +444,12 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   const sender = senderData as
-    | { id: string; latitude: number | null; longitude: number | null }
+    | { id: string; latitude: number | null; longitude: number | null; onboarding_completed: boolean }
     | null;
-  if (!sender) {
+  if (!sender || !sender.onboarding_completed) {
     return jsonResponse(
-      { code: "MVP_PROFILE_UNAVAILABLE", message: "The MVP search profile is unavailable." },
-      503,
+      { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile before searching." },
+      409,
       origin,
       allowedOrigins,
     );
@@ -431,8 +457,8 @@ async function handleRequest(request: Request): Promise<Response> {
 
   if (!isValidCoordinate(sender.latitude, sender.longitude)) {
     return jsonResponse(
-      { code: "LOCATION_UNAVAILABLE", message: "The search location is unavailable." },
-      503,
+      { code: "PROFILE_SETUP_REQUIRED", message: "Add your location before searching." },
+      409,
       origin,
       allowedOrigins,
     );
@@ -445,7 +471,8 @@ async function handleRequest(request: Request): Promise<Response> {
     .select(
       "id, name, avatar_url, headline, bio, skills, interests, availability, latitude, longitude",
     )
-    .neq("id", config.value.senderId)
+    .neq("id", sender.id)
+    .eq("onboarding_completed", true)
     .eq("is_discoverable", true)
     .eq("is_available", true);
 
@@ -481,7 +508,7 @@ async function handleRequest(request: Request): Promise<Response> {
     const { data: connectionData, error: connectionError } = await admin.database
       .from("connections")
       .select("recipient_id")
-      .eq("sender_id", config.value.senderId)
+      .eq("sender_id", sender.id)
       .eq("status", "pending")
       .in("recipient_id", resultIds);
 
