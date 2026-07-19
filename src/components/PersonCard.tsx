@@ -18,12 +18,12 @@ function initials(name: string): string {
 
 export function PersonCard({ person, connectionState, onConnect }: PersonCardProps) {
   const [avatarFailed, setAvatarFailed] = useState(false);
-  const tags = [...person.skills, ...person.interests].slice(0, 6);
+  const tags = Array.from(new Set([...person.skills, ...person.interests])).slice(0, 6);
   const isPending = connectionState.status === "pending";
   const isSubmitting = connectionState.status === "submitting";
 
   return (
-    <article className="group flex h-full flex-col rounded-[1.7rem] border border-ink/10 bg-paper p-5 shadow-card transition duration-300 hover:-translate-y-1 hover:border-forest/20 sm:p-6">
+    <article className="flex h-full flex-col rounded-xl border border-hairline-soft bg-canvas p-5 shadow-subtle transition hover:shadow-card sm:p-6">
       <div className="flex items-start gap-4">
         <div className="relative shrink-0">
           {person.avatarUrl && !avatarFailed ? (
@@ -32,69 +32,69 @@ export function PersonCard({ person, connectionState, onConnect }: PersonCardPro
               alt={`${person.name}'s profile`}
               loading="lazy"
               onError={() => setAvatarFailed(true)}
-              className="h-14 w-14 rounded-[1.15rem] object-cover ring-4 ring-cream"
+              className="h-16 w-16 rounded-full object-cover"
             />
           ) : (
             <div
               aria-label={`${person.name}'s initials`}
-              className="grid h-14 w-14 place-items-center rounded-[1.15rem] bg-forest text-base font-bold text-paper ring-4 ring-cream"
+              className="grid h-16 w-16 place-items-center rounded-full bg-cream-deeper text-lg font-semibold text-primary-deep"
             >
               {initials(person.name)}
             </div>
           )}
-          <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-[3px] border-paper bg-[#65a271]" aria-label="Available" />
+          <span
+            className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-canvas bg-success"
+            aria-label="Available"
+          />
         </div>
+
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="truncate text-lg font-bold tracking-[-0.025em] text-ink">{person.name}</h3>
-              <p className="mt-0.5 line-clamp-2 text-sm leading-snug text-moss">{person.headline}</p>
-            </div>
-            <span className="shrink-0 rounded-full bg-cream px-2.5 py-1 text-xs font-bold text-forest">
-              {person.distanceKm.toFixed(1)} km
+          <h3 className="truncate text-lg font-medium text-ink">{person.name}</h3>
+          <p className="mt-0.5 text-sm leading-5 text-slate">{person.headline}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-steel">
+            <span className="inline-flex items-center gap-1.5">
+              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-primary">
+                <path d="M16 8.2c0 4-6 8.8-6 8.8S4 12.2 4 8.2a6 6 0 1 1 12 0Z" strokeWidth="1.4" />
+                <circle cx="10" cy="8" r="1.8" strokeWidth="1.4" />
+              </svg>
+              {person.distanceKm.toFixed(1)} km away
             </span>
+            {person.availability && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                {person.availability}
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="mt-5 rounded-[1.15rem] border border-forest/10 bg-[#edf1e9] p-4">
-        <div className="mb-1.5 flex items-center gap-2 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-forest/65">
-          <span className="h-1.5 w-1.5 rounded-full bg-coral" />
-          Why they fit
-        </div>
-        <p className="text-sm font-semibold leading-relaxed text-ink">{person.matchReason}</p>
+      <div className="mt-5 rounded-lg border border-beige bg-cream-light p-4">
+        <p className="text-xs font-semibold text-primary-deep">Why this person fits</p>
+        <p className="mt-1 text-sm leading-5 text-ink">{person.matchReason}</p>
       </div>
 
       {tags.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2" aria-label="Skills and interests">
-          {tags.map((tag, index) => (
-            <span key={`${tag}-${index}`} className="rounded-full border border-ink/10 px-2.5 py-1 text-xs font-medium text-moss">
+        <div className="mt-4 flex flex-wrap gap-1.5" aria-label="Skills and interests">
+          {tags.map((tag) => (
+            <span key={tag} className="rounded-full bg-cream-deeper px-2.5 py-1 text-xs font-medium text-slate">
               {tag}
             </span>
           ))}
         </div>
       )}
 
-      {person.bio && <p className="mt-4 line-clamp-2 text-sm leading-relaxed text-moss">{person.bio}</p>}
+      {person.bio && <p className="mt-4 line-clamp-2 text-sm leading-5 text-steel">{person.bio}</p>}
 
       <div className="mt-auto pt-5">
-        {person.availability && (
-          <p className="mb-3 flex items-center gap-2 text-xs font-semibold text-moss">
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current">
-              <circle cx="10" cy="10" r="7.5" strokeWidth="1.5" />
-              <path d="M10 6v4l2.7 1.6" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            {person.availability}
-          </p>
-        )}
         <button
           type="button"
           disabled={isPending || isSubmitting}
           onClick={() => onConnect(person)}
-          className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-[1rem] px-4 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest ${
+          className={`inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
             isPending
-              ? "cursor-default bg-[#dcebdd] text-[#28603a]"
-              : "border border-forest/20 bg-transparent text-forest hover:border-forest hover:bg-forest hover:text-white disabled:cursor-wait disabled:opacity-65"
+              ? "cursor-default border border-success/30 bg-[#edf7f1] text-success"
+              : "border border-hairline-strong bg-canvas text-ink hover:border-ink hover:bg-surface disabled:cursor-wait disabled:text-muted"
           }`}
         >
           {isSubmitting ? (
@@ -110,12 +110,13 @@ export function PersonCard({ person, connectionState, onConnect }: PersonCardPro
           ) : (
             <>
               Connect
-              <span aria-hidden="true">↗</span>
+              <span aria-hidden="true">→</span>
             </>
           )}
         </button>
+
         {connectionState.status === "error" && (
-          <p role="alert" className="mt-2 text-center text-xs font-medium text-[#bc492f]">
+          <p role="alert" className="mt-3 text-xs font-medium text-signal">
             {connectionState.message} Select Connect to retry.
           </p>
         )}
