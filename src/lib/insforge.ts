@@ -1,35 +1,24 @@
 import { createClient, type InsForgeClient } from "@insforge/sdk";
 
 const baseUrl = import.meta.env.VITE_INSFORGE_URL?.trim();
+const functionsUrl = import.meta.env.VITE_INSFORGE_FUNCTIONS_URL?.trim();
 const anonKey = import.meta.env.VITE_INSFORGE_ANON_KEY?.trim();
-const configuredFunctionsUrl = import.meta.env.VITE_INSFORGE_FUNCTIONS_URL?.trim();
 
-export const hasInsforgeConfig = Boolean(baseUrl && anonKey);
+export const hasInsforgeConfig = Boolean(baseUrl && functionsUrl && anonKey);
 
 let client: InsForgeClient | null = null;
 
-function functionsUrlFor(apiBaseUrl: string): string | undefined {
-  if (configuredFunctionsUrl) return configuredFunctionsUrl;
-  try {
-    const apiUrl = new URL(apiBaseUrl);
-    const appKey = apiUrl.hostname.split(".")[0];
-    return appKey ? `https://${appKey}.function2.insforge.app` : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export function getInsforgeClient(): InsForgeClient {
-  if (!baseUrl || !anonKey) {
+  if (!baseUrl || !functionsUrl || !anonKey) {
     throw new Error(
-      "The preview backend is not connected yet. Add the InsForge URL and anon key, then try again.",
+      "The preview backend is not connected yet. Add the InsForge API, Functions URL, and anon key, then try again.",
     );
   }
 
   client ??= createClient({
     baseUrl,
+    functionsUrl,
     anonKey,
-    functionsUrl: functionsUrlFor(baseUrl),
     timeout: 15_000,
     retryCount: 1,
   });

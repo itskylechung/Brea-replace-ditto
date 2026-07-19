@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  color: #17342d;
-  background: #f4f1e8;
-  font-family: "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #1f1f1f;
+  background: #ffffff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -36,58 +36,58 @@ button {
 }
 
 ::selection {
-  color: #fffdf8;
-  background: #4f6f61;
+  color: #ffffff;
+  background: #fa520f;
 }
 
-.ambient {
-  position: fixed;
-  z-index: 0;
-  width: 34rem;
-  height: 34rem;
-  border-radius: 999px;
-  pointer-events: none;
-  filter: blur(2px);
-  opacity: 0.4;
+.hero-sunset {
+  background:
+    radial-gradient(circle at 80% 18%, rgba(255, 217, 0, 0.95) 0, rgba(255, 217, 0, 0) 30%),
+    radial-gradient(circle at 70% 82%, rgba(204, 58, 5, 0.66) 0, rgba(204, 58, 5, 0) 38%),
+    linear-gradient(135deg, #ffa110 0%, #ff8a00 58%, #fa520f 100%);
 }
 
-.ambient-one {
-  top: -20rem;
-  right: -12rem;
-  background: radial-gradient(circle, rgba(244, 200, 93, 0.45), rgba(244, 200, 93, 0));
+.sunset-stripe {
+  background: linear-gradient(90deg, #cc3a05 0%, #fa520f 22%, #ffa110 48%, #ffb83e 68%, #ffd900 84%, #fff8e0 100%);
 }
 
-.ambient-two {
-  top: 30rem;
-  left: -26rem;
-  background: radial-gradient(circle, rgba(86, 128, 107, 0.24), rgba(86, 128, 107, 0));
+.topography-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .radius-slider {
   height: 4px;
   border-radius: 999px;
   appearance: none;
-  background: linear-gradient(to right, #153b32, #ee7658);
+  background: linear-gradient(90deg, #fa520f 0%, #ffa110 var(--range-progress), #e5e5e5 var(--range-progress), #e5e5e5 100%);
   cursor: pointer;
 }
 
 .radius-slider::-webkit-slider-thumb {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   appearance: none;
-  border: 4px solid #fffdf8;
+  border: 3px solid #ffffff;
   border-radius: 999px;
-  background: #153b32;
-  box-shadow: 0 2px 8px rgba(23, 52, 45, 0.25);
+  background: #fa520f;
+  box-shadow: 0 0 0 1px #cc3a05;
 }
 
 .radius-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: 4px solid #fffdf8;
+  width: 12px;
+  height: 12px;
+  border: 3px solid #ffffff;
   border-radius: 999px;
-  background: #153b32;
-  box-shadow: 0 2px 8px rgba(23, 52, 45, 0.25);
+  background: #fa520f;
+  box-shadow: 0 0 0 1px #cc3a05;
+}
+
+.radius-slider:focus-visible {
+  outline: 2px solid #fa520f;
+  outline-offset: 5px;
 }
 
 @media (prefers-reduced-motion: reduce) {

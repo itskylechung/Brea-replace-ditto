@@ -18,11 +18,11 @@ Required browser-safe variables:
 
 ```dotenv
 VITE_INSFORGE_URL=
-VITE_INSFORGE_ANON_KEY=
 VITE_INSFORGE_FUNCTIONS_URL=
+VITE_INSFORGE_ANON_KEY=
 ```
 
-The Function URL is optional; Brea derives InsForge's `function2` host from the API URL unless an override is supplied. Only these browser-safe endpoints and the anon key belong in `VITE_*` variables. Never place the InsForge admin/API key or raw coordinates in frontend environment variables.
+Only the public InsForge API URL, Functions runtime URL, and anon key belong in `VITE_*` variables. Never place the InsForge admin/API key, LinkedIn client secret, or raw coordinates in frontend environment variables.
 
 Useful checks:
 
@@ -61,13 +61,15 @@ The local repo is linked to the Vercel project `rex-yens-projects/brea-replace-d
 
 ```bash
 vercel env add VITE_INSFORGE_URL preview
+vercel env add VITE_INSFORGE_FUNCTIONS_URL preview
 vercel env add VITE_INSFORGE_ANON_KEY preview
 vercel env add VITE_INSFORGE_URL development
+vercel env add VITE_INSFORGE_FUNCTIONS_URL development
 vercel env add VITE_INSFORGE_ANON_KEY development
 vercel env pull .env.local --environment=development --yes
 ```
 
-Run `npm run build` before deploying. A feature branch should deploy as a Vercel Preview. Production must be rebuilt from `main` with a separate Production InsForge environment; do not promote a Preview artifact that embeds Preview `VITE_*` values.
+The backend `BREA_ALLOWED_ORIGINS` allowlist must include the exact frontend URL. Prefer one stable Preview domain instead of adding every generated branch URL. Run `npm run build` before deploying. A feature branch should deploy as a Vercel Preview. Production must be rebuilt from `main` with a separate Production InsForge environment; do not promote a Preview artifact that embeds Preview `VITE_*` values.
 
 ## Current limitations
 

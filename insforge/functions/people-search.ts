@@ -443,7 +443,12 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   const sender = senderData as
-    | { id: string; latitude: number | null; longitude: number | null; onboarding_completed: boolean }
+    | {
+      id: string;
+      latitude: number | null;
+      longitude: number | null;
+      onboarding_completed: boolean;
+    }
     | null;
   if (!sender || !sender.onboarding_completed) {
     return jsonResponse(
