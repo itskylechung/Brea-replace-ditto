@@ -12,7 +12,9 @@ ALTER TABLE public.profiles
   ALTER COLUMN is_available SET DEFAULT false;
 
 UPDATE public.profiles
-SET onboarding_completed = true;
+SET
+  onboarding_completed = true,
+  location_label = COALESCE(location_label, 'Taipei');
 
 ALTER TABLE public.profiles
   ADD CONSTRAINT profiles_avatar_url_length_is_valid

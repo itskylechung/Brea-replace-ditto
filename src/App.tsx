@@ -29,35 +29,30 @@ function readableError(error: unknown, fallback: string): string {
 export function App() {
   const auth = useAuth();
   const [profile, setProfile] = useState<BreaProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    if (!auth.user) {
-      setProfile(null);
-      setProfileLoading(false);
-      return;
-    }
+    if (!auth.user) return;
 
-    setProfileLoading(true);
-    setProfileError(null);
     void ensureCurrentProfile(auth.user)
       .then((nextProfile) => {
-        if (!cancelled) setProfile(nextProfile);
+        if (!cancelled) {
+          setProfileError(null);
+          setProfile(nextProfile);
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) setProfileError(readableError(error, "We could not load your profile."));
-      })
-      .finally(() => {
-        if (!cancelled) setProfileLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [auth.user]);
 
-  if (auth.isLoading || profileLoading) {
+  const profilePending = Boolean(auth.user && !profileError && profile?.userId !== auth.user.id);
+
+  if (auth.isLoading || profilePending) {
     return (
       <div className="grid min-h-screen place-items-center bg-cream text-forest" role="status">
         <div className="text-center"><BreaMark /><p className="mt-5 text-sm text-moss">Preparing your private profile…</p></div>
