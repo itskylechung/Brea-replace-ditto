@@ -36,6 +36,33 @@ npx @insforge/cli functions deploy connection-request --file insforge/functions/
 
 `anon` has no table access. `authenticated` receives only owner-scoped profile access and participant-scoped connection reads/deletes, all behind RLS. Profile identity and timestamp columns are not updateable. The Functions use the server-only admin client only after verifying the caller's InsForge JWT.
 
+## OAuth sign-in configuration
+
+LinkedIn (the only provider the UI offers), Google, and GitHub are enabled with InsForge shared
+OAuth apps (`useSharedKey: true`); no provider credentials are stored in this project. OAuth
+configs are not covered by `insforge.toml` — manage them in the InsForge dashboard under
+`Auth Methods`, or through the admin API with the project API key:
+
+```sh
+# List configured providers
+curl -sS "$INSFORGE_BASE_URL/api/auth/oauth/configs" -H "Authorization: Bearer $API_KEY"
+
+# Enable LinkedIn with InsForge shared keys (applied to this Preview project on 2026-07-19)
+curl -sS -X POST "$INSFORGE_BASE_URL/api/auth/oauth/configs" \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"provider":"linkedin","useSharedKey":true,"scopes":["openid","profile","email"]}'
+```
+
+The auth `allowed_redirect_urls` list must contain the plain frontend origins — currently
+`http://localhost:5173`, `https://brea-replace-ditto.vercel.app`, and
+`https://brea-replace-ditto-*-rex-yens-projects.vercel.app`. The frontend passes
+`redirectTo: window.location.origin` and the SPA has no `/auth/callback` route; the SDK detects
+the `insforge_code` callback parameter on any path. Update the list via `PUT /api/auth/config`
+with `allowedRedirectUrls`, or in the dashboard.
+
+A new environment (for example Production) needs both of these applied before LinkedIn sign-in
+works: the provider config and the redirect-URL allowlist for its own frontend origins.
+
 ## Frontend handoff
 
 Provide the frontend owner only the API base and anonymous key. Never provide `API_KEY` or LinkedIn's client secret to browser code.

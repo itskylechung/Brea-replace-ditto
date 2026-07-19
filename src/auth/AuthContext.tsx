@@ -30,6 +30,11 @@ function messageFrom(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+function isSignedOutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return (error as { statusCode?: unknown }).statusCode === 401;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserSchema | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,12 +57,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         client.auth.getPublicAuthConfig(),
       ]);
 
-      if (sessionResult.error) throw sessionResult.error;
-      setUser(sessionResult.data?.user ?? null);
-
       if (!configResult.error) {
         setLinkedinEnabled(configResult.data?.oAuthProviders?.includes("linkedin") ?? false);
       }
+
+      // A visitor without a session gets a 401 from getCurrentUser; that is
+      // the normal signed-out state, not a failure to surface.
+      if (sessionResult.error && !isSignedOutError(sessionResult.error)) {
+        throw sessionResult.error;
+      }
+      setUser(sessionResult.data?.user ?? null);
     } catch (nextError) {
       setUser(null);
       setError(messageFrom(nextError, "We could not restore your session."));
