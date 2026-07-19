@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BreaMark } from "./components/BreaMark";
-import { DiscoveryContext } from "./components/DiscoveryContext";
+import { DiscoverySteps } from "./components/DiscoverySteps";
 import { EmptyState } from "./components/EmptyState";
 import { PersonCard } from "./components/PersonCard";
 import { SearchForm } from "./components/SearchForm";
@@ -24,6 +24,14 @@ export function App() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionUiState>>({});
+  const resultsSectionRef = useRef<HTMLElement>(null);
+
+  function revealSearchOutcome() {
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    window.requestAnimationFrame(() => {
+      resultsSectionRef.current?.scrollIntoView({ behavior, block: "start" });
+    });
+  }
 
   function updateQuery(nextQuery: string) {
     setQuery(nextQuery);
@@ -62,10 +70,12 @@ export function App() {
         return next;
       });
       setSearchStatus(response.results.length > 0 ? "results" : "empty");
+      revealSearchOutcome();
     } catch (error) {
       setResults([]);
       setSearchError(readableError(error, "We could not search nearby right now. Please try again."));
       setSearchStatus("error");
+      revealSearchOutcome();
     }
   }
 
@@ -181,10 +191,16 @@ export function App() {
               />
             </section>
 
-            <DiscoveryContext radiusKm={radiusKm} />
+            <DiscoverySteps />
           </div>
 
-          <section className="mt-12" aria-live="polite" aria-busy={isLoading}>
+          <section
+            id="search-results"
+            ref={resultsSectionRef}
+            className="mt-12 scroll-mt-24"
+            aria-live="polite"
+            aria-busy={isLoading}
+          >
             {isLoading && (
               <div className="grid gap-5 md:grid-cols-2" aria-label="Searching for nearby people">
                 {[1, 2, 3, 4].map((item) => (
