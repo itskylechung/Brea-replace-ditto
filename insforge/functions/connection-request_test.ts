@@ -1,4 +1,5 @@
 import {
+  bearerToken,
   handler,
   isUuid,
   parseAllowedOrigins,
@@ -18,6 +19,12 @@ function assertEquals(actual: unknown, expected: unknown): void {
 }
 
 const RECIPIENT_ID = "00000000-0000-4000-8000-000000000101";
+
+Deno.test("bearerToken accepts a Bearer token and rejects other authorization schemes", () => {
+  assertEquals(bearerToken(new Headers({ Authorization: "Bearer signed-token" })), "signed-token");
+  assertEquals(bearerToken(new Headers({ Authorization: "Basic credentials" })), null);
+  assertEquals(bearerToken(new Headers()), null);
+});
 
 Deno.test("isUuid accepts canonical UUIDs and rejects malformed values", () => {
   assert(isUuid(RECIPIENT_ID));

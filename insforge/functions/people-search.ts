@@ -8,7 +8,6 @@ const MIN_RADIUS_KM = 1;
 const MAX_RADIUS_KM = 50;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 20;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const STOPWORDS = new Set([
   "a",
@@ -380,6 +379,23 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse(
+      { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
+      400,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  const validatedInput = validateSearchInput(body);
+  if (!validatedInput.ok) {
+    return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
+  }
+
   const config = configuration();
   if (!config.ok) {
     return jsonResponse(config.error, 503, origin, allowedOrigins);
@@ -404,23 +420,6 @@ async function handleRequest(request: Request): Promise<Response> {
       origin,
       allowedOrigins,
     );
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse(
-      { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
-      400,
-      origin,
-      allowedOrigins,
-    );
-  }
-
-  const validatedInput = validateSearchInput(body);
-  if (!validatedInput.ok) {
-    return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
   }
 
   const admin = createAdminClient({

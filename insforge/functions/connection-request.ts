@@ -172,6 +172,23 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse(
+      { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
+      400,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  const validatedInput = validateConnectionInput(body);
+  if (!validatedInput.ok) {
+    return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
+  }
+
   const config = configuration();
   if (!config.ok) {
     return jsonResponse(config.error, 503, origin, allowedOrigins);
@@ -196,23 +213,6 @@ async function handleRequest(request: Request): Promise<Response> {
       origin,
       allowedOrigins,
     );
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse(
-      { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
-      400,
-      origin,
-      allowedOrigins,
-    );
-  }
-
-  const validatedInput = validateConnectionInput(body);
-  if (!validatedInput.ok) {
-    return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
   }
 
   const admin = createAdminClient({

@@ -1,4 +1,5 @@
 import {
+  bearerToken,
   compareRankedProfiles,
   handler,
   haversineKm,
@@ -35,6 +36,12 @@ function profile(overrides: Partial<ProfileRow> = {}): ProfileRow {
     ...overrides,
   };
 }
+
+Deno.test("bearerToken accepts a Bearer token and rejects other authorization schemes", () => {
+  assertEquals(bearerToken(new Headers({ Authorization: "Bearer signed-token" })), "signed-token");
+  assertEquals(bearerToken(new Headers({ Authorization: "Basic credentials" })), null);
+  assertEquals(bearerToken(new Headers()), null);
+});
 
 Deno.test("normalizeQuery strips punctuation, accents, duplicate terms, and stopwords", () => {
   assertEquals(
