@@ -67,7 +67,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) return refresh();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [refresh]);
 
   const signInWithLinkedIn = useCallback(async () => {

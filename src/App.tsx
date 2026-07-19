@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./auth/AuthContext";
 import { BreaMark } from "./components/BreaMark";
+import { DiscoveryContext } from "./components/DiscoveryContext";
 import { EmptyState } from "./components/EmptyState";
 import { PersonCard } from "./components/PersonCard";
 import { ProfileSetup } from "./components/ProfileSetup";
 import { SearchForm } from "./components/SearchForm";
 import { SignInScreen } from "./components/SignInScreen";
+import { SunsetRadar } from "./components/SunsetRadar";
 import {
   ensureCurrentProfile,
   searchNearbyPeople,
@@ -34,24 +36,25 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!auth.user) {
-      setProfile(null);
-      setProfileLoading(false);
-      return;
-    }
+    const user = auth.user;
+    if (!user) return;
 
-    setProfileLoading(true);
-    setProfileError(null);
-    void ensureCurrentProfile(auth.user)
-      .then((nextProfile) => {
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setProfileLoading(true);
+      setProfileError(null);
+      try {
+        const nextProfile = await ensureCurrentProfile(user);
         if (!cancelled) setProfile(nextProfile);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setProfileError(readableError(error, "We could not load your profile."));
-      })
-      .finally(() => {
+      } catch (error) {
+        if (!cancelled) {
+          setProfileError(readableError(error, "We could not load your profile."));
+        }
+      } finally {
         if (!cancelled) setProfileLoading(false);
-      });
+      }
+    });
+
     return () => {
       cancelled = true;
     };
@@ -59,8 +62,11 @@ export function App() {
 
   if (auth.isLoading || profileLoading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-cream text-forest" role="status">
-        <div className="text-center"><BreaMark /><p className="mt-5 text-sm text-moss">Preparing your private profile…</p></div>
+      <div className="grid min-h-screen place-items-center bg-cream text-ink" role="status">
+        <div className="text-center">
+          <BreaMark />
+          <p className="mt-5 text-sm text-steel">Preparing your private profile…</p>
+        </div>
       </div>
     );
   }
@@ -78,13 +84,27 @@ export function App() {
   if (profileError || !profile) {
     return (
       <div className="grid min-h-screen place-items-center bg-cream px-5 text-center text-ink">
-        <div className="max-w-lg rounded-[2rem] bg-paper/70 p-8 shadow-card">
+        <div className="max-w-lg rounded-xl border border-hairline-soft bg-canvas p-8 shadow-card">
           <BreaMark />
-          <h1 className="mt-7 text-2xl font-bold">Your profile could not be prepared</h1>
-          <p className="mt-3 text-sm leading-relaxed text-[#a44734]">{profileError ?? "No profile was returned."}</p>
+          <h1 className="mt-7 font-editorial text-3xl">Your profile could not be prepared</h1>
+          <p className="mt-3 text-sm leading-6 text-signal">
+            {profileError ?? "No profile was returned."}
+          </p>
           <div className="mt-6 flex justify-center gap-3">
-            <button type="button" onClick={() => window.location.reload()} className="rounded-full bg-forest px-5 py-2.5 text-sm font-bold text-white">Retry</button>
-            <button type="button" onClick={() => void auth.signOut()} className="rounded-full border border-forest/20 px-5 py-2.5 text-sm font-bold text-forest">Sign out</button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => void auth.signOut()}
+              className="rounded-lg border border-hairline-strong px-5 py-2.5 text-sm font-medium text-ink"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </div>
@@ -96,13 +116,20 @@ export function App() {
       if (!auth.user) return;
       setProfile(await updateCurrentProfile(auth.user.id, input));
     }
+
     return <ProfileSetup profile={profile} onSave={saveProfile} onSignOut={auth.signOut} />;
   }
 
   return <DiscoveryApp profile={profile} onSignOut={auth.signOut} />;
 }
 
-function DiscoveryApp({ profile, onSignOut }: { profile: BreaProfile; onSignOut: () => Promise<void> }) {
+function DiscoveryApp({
+  profile,
+  onSignOut,
+}: {
+  profile: BreaProfile;
+  onSignOut: () => Promise<void>;
+}) {
   const [query, setQuery] = useState("");
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
   const [submittedQuery, setSubmittedQuery] = useState("");
@@ -192,145 +219,204 @@ function DiscoveryApp({ profile, onSignOut }: { profile: BreaProfile; onSignOut:
   const isLoading = searchStatus === "loading";
 
   return (
-    <div className="min-h-screen overflow-hidden bg-cream text-ink">
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-
-      <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-6 sm:px-8 lg:px-10">
-        <BreaMark />
-        <div className="flex items-center gap-3">
-          {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" referrerPolicy="no-referrer" className="h-9 w-9 rounded-full object-cover" /> : null}
-          <span className="hidden text-sm font-bold text-forest sm:inline">{profile.name}</span>
-          <button type="button" onClick={() => void onSignOut()} className="rounded-full border border-forest/15 bg-paper/60 px-3 py-1.5 text-xs font-bold text-forest hover:bg-paper">
-            Sign out
-          </button>
-        </div>
+    <div id="top" className="min-h-screen bg-canvas text-ink">
+      <header className="sticky top-0 z-20 border-b border-hairline-soft bg-canvas/95 backdrop-blur">
+        <nav
+          className="mx-auto flex min-h-16 w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-8"
+          aria-label="Primary navigation"
+        >
+          <BreaMark />
+          <div className="flex items-center gap-3">
+            {profile.avatarUrl && (
+              <img
+                src={profile.avatarUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="h-9 w-9 rounded-full object-cover"
+              />
+            )}
+            <span className="hidden text-sm font-medium text-slate sm:inline">{profile.name}</span>
+            <button
+              type="button"
+              onClick={() => void onSignOut()}
+              className="rounded-lg border border-hairline-strong bg-canvas px-3 py-2 text-xs font-medium text-ink transition hover:border-ink"
+            >
+              Sign out
+            </button>
+          </div>
+        </nav>
       </header>
 
-      <main className="relative z-[1] mx-auto w-full max-w-7xl px-5 pb-16 pt-7 sm:px-8 lg:px-10 lg:pt-14">
-        <section className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.55fr)] lg:items-center lg:gap-16">
-          <div>
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-forest/10 bg-paper/55 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-moss">
-              <span className="h-2 w-2 rounded-full bg-coral" />
-              Nearby · Relevant · Human
+      <main>
+        <section className="hero-sunset overflow-hidden" aria-labelledby="page-title">
+          <div className="mx-auto grid w-full max-w-[1280px] items-center gap-12 px-4 py-16 sm:px-8 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
+            <div className="max-w-2xl">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-ink-tint">
+                Nearby, but relevant
+              </p>
+              <h1
+                id="page-title"
+                className="mt-4 font-editorial text-[clamp(3rem,7vw,5.25rem)] font-normal leading-[1.03] tracking-[-0.025em] text-ink"
+              >
+                The right people might be closer than you think.
+              </h1>
+              <p className="mt-6 max-w-xl text-base leading-7 text-ink-tint sm:text-lg">
+                Describe who you want to meet. Brea turns your intent into a shortlist of relevant
+                people inside a practical radius—and tells you why each person fits.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-4">
+                <a
+                  href="#people-search"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-ink px-5 text-sm font-medium text-white transition hover:bg-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                >
+                  Start a nearby search
+                  <span aria-hidden="true">↓</span>
+                </a>
+                <p className="text-xs leading-5 text-ink-tint">Your exact location stays private.</p>
+              </div>
             </div>
-            <h1 className="max-w-4xl text-[clamp(3rem,8vw,6.7rem)] font-semibold leading-[0.9] tracking-[-0.075em] text-ink">
-              Find your
-              <span className="relative ml-[0.16em] inline-block text-coral">
-                people
-                <svg aria-hidden="true" viewBox="0 0 250 22" preserveAspectRatio="none" className="absolute -bottom-2 left-0 h-4 w-full fill-none stroke-sun">
-                  <path d="M3 14C56 4 147 3 247 10" strokeWidth="7" strokeLinecap="round" />
-                </svg>
-              </span>
-              <br />
-              close to home.
-            </h1>
-            <p className="mt-7 max-w-2xl text-base leading-relaxed text-moss sm:text-lg">
-              Tell Brea who you want to meet. We will surface suitable people nearby and explain what makes each connection worth exploring.
-            </p>
+            <SunsetRadar />
+          </div>
+        </section>
+
+        <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
+          <div
+            id="people-search"
+            className="grid scroll-mt-24 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"
+          >
+            <section
+              className="rounded-xl border border-beige bg-cream p-5 sm:p-8"
+              aria-labelledby="search-title"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-primary-deep">
+                    People discovery
+                  </p>
+                  <h2
+                    id="search-title"
+                    className="mt-2 font-editorial text-3xl font-normal tracking-[-0.02em] text-ink sm:text-4xl"
+                  >
+                    Who are you hoping to find?
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate">
+                    Search by role, skill, interest, or availability. Relevance comes first;
+                    distance breaks the tie.
+                  </p>
+                </div>
+                <span className="hidden rounded-full bg-canvas px-3 py-1 text-xs font-medium text-steel sm:block">
+                  Up to 12
+                </span>
+              </div>
+
+              <SearchForm
+                query={query}
+                radiusKm={radiusKm}
+                isLoading={isLoading}
+                validationError={validationError}
+                onQueryChange={updateQuery}
+                onRadiusChange={setRadiusKm}
+                onSubmit={() => void runSearch()}
+              />
+            </section>
+
+            <DiscoveryContext radiusKm={radiusKm} />
           </div>
 
-          <aside className="relative hidden rounded-[2rem] border border-paper/50 bg-forest p-7 text-paper shadow-card lg:block">
-            <span className="absolute right-6 top-5 text-5xl leading-none text-sun/80" aria-hidden="true">“</span>
-            <p className="max-w-xs pt-7 text-xl font-medium leading-snug tracking-[-0.025em]">
-              The right collaborator might be three blocks away.
-            </p>
-            <div className="mt-8 flex items-center gap-3 border-t border-paper/15 pt-5 text-sm text-paper/65">
-              <div className="flex -space-x-2" aria-hidden="true">
-                <span className="h-8 w-8 rounded-full border-2 border-forest bg-[#d89865]" />
-                <span className="h-8 w-8 rounded-full border-2 border-forest bg-[#86a987]" />
-                <span className="h-8 w-8 rounded-full border-2 border-forest bg-[#e8bd5b]" />
-              </div>
-              Search by intent, not by scrolling.
-            </div>
-          </aside>
-        </section>
-
-        <section className="mt-10 rounded-[2rem] border border-paper/70 bg-paper/55 p-4 backdrop-blur-sm sm:p-7 lg:mt-14 lg:p-8" aria-labelledby="search-title">
-          <h2 id="search-title" className="sr-only">Search for people nearby</h2>
-          <SearchForm
-            query={query}
-            radiusKm={radiusKm}
-            isLoading={isLoading}
-            validationError={validationError}
-            onQueryChange={updateQuery}
-            onRadiusChange={setRadiusKm}
-            onSubmit={() => void runSearch()}
-          />
-        </section>
-
-        <section className="mt-12" aria-live="polite" aria-busy={isLoading}>
-          {isLoading && (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Searching for nearby people">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="h-[25rem] animate-pulse rounded-[1.7rem] border border-ink/5 bg-paper/60 p-6">
-                  <div className="flex gap-4"><div className="h-14 w-14 rounded-2xl bg-ink/10" /><div className="flex-1"><div className="h-4 w-2/3 rounded bg-ink/10" /><div className="mt-3 h-3 w-full rounded bg-ink/5" /></div></div>
-                  <div className="mt-6 h-24 rounded-2xl bg-ink/5" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {searchStatus === "error" && searchError && (
-            <div className="rounded-[1.8rem] border border-[#c95b43]/20 bg-[#fff3ee] px-6 py-10 text-center">
-              <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-xl text-coral" aria-hidden="true">!</div>
-              <h2 className="mt-4 text-xl font-bold text-ink">We could not complete that search</h2>
-              <p role="alert" className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-[#875345]">{searchError}</p>
-              <button
-                type="button"
-                onClick={() => void runSearch(submittedQuery, radiusKm)}
-                className="mt-6 rounded-full bg-forest px-5 py-2.5 text-sm font-bold text-white transition hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest"
-              >
-                Retry search
-              </button>
-            </div>
-          )}
-
-          {searchStatus === "empty" && <EmptyState radiusKm={radiusKm} onBroaden={broadenSearch} />}
-
-          {searchStatus === "results" && (
-            <>
-              <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-coral">Nearby matches</p>
-                  <h2 className="mt-1 text-2xl font-bold tracking-[-0.04em] text-ink sm:text-3xl">
-                    {results.length} {results.length === 1 ? "person" : "people"} worth meeting
-                  </h2>
-                </div>
-                <p className="text-sm text-moss">Ranked for “{submittedQuery}” · within {radiusKm} km</p>
-              </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {results.map((person) => (
-                  <PersonCard
-                    key={person.id}
-                    person={person}
-                    connectionState={connectionStates[person.id] ?? { status: "none" }}
-                    onConnect={(selectedPerson) => void connectWith(selectedPerson)}
-                  />
+          <section className="mt-12" aria-live="polite" aria-busy={isLoading}>
+            {isLoading && (
+              <div className="grid gap-5 md:grid-cols-2" aria-label="Searching for nearby people">
+                {[1, 2, 3, 4].map((item) => (
+                  <div
+                    key={item}
+                    className="animate-pulse rounded-xl border border-hairline-soft bg-canvas p-6 shadow-subtle"
+                  >
+                    <div className="flex gap-4">
+                      <div className="h-16 w-16 shrink-0 rounded-full bg-cream-deeper" />
+                      <div className="flex-1">
+                        <div className="h-4 w-32 rounded bg-hairline" />
+                        <div className="mt-3 h-3 w-2/3 rounded bg-hairline-soft" />
+                      </div>
+                    </div>
+                    <div className="mt-5 h-20 rounded-lg bg-cream-light" />
+                    <div className="mt-5 h-10 rounded-lg bg-hairline-soft" />
+                  </div>
                 ))}
               </div>
-            </>
-          )}
-        </section>
+            )}
 
-        <section className="mt-20 grid gap-8 border-t border-ink/10 py-10 sm:grid-cols-3" aria-label="How Brea works">
-          {[
-            ["01", "Say what you need", "Describe a skill, interest, or activity in everyday language."],
-            ["02", "Stay meaningfully local", "Set a real distance so every result is genuinely nearby."],
-            ["03", "Start with context", "See why someone fits, then send one lightweight request."],
-          ].map(([number, title, description]) => (
-            <div key={number} className="flex gap-4">
-              <span className="pt-0.5 text-xs font-black tracking-widest text-coral">{number}</span>
-              <div><h2 className="font-bold text-ink">{title}</h2><p className="mt-1 text-sm leading-relaxed text-moss">{description}</p></div>
-            </div>
-          ))}
-        </section>
+            {searchStatus === "error" && searchError && (
+              <div className="rounded-xl border border-hairline-soft bg-canvas px-6 py-12 text-center shadow-subtle">
+                <div
+                  className="mx-auto grid h-11 w-11 place-items-center rounded-lg bg-[#fff0ed] text-signal"
+                  aria-hidden="true"
+                >
+                  !
+                </div>
+                <h2 className="mt-4 font-editorial text-3xl font-normal text-ink">
+                  We could not complete that search
+                </h2>
+                <p role="alert" className="mx-auto mt-2 max-w-xl text-sm leading-6 text-steel">
+                  {searchError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void runSearch(submittedQuery, radiusKm)}
+                  className="mt-5 rounded-lg border border-hairline-strong bg-canvas px-5 py-2.5 text-sm font-medium text-ink transition hover:border-ink hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  Retry search
+                </button>
+              </div>
+            )}
+
+            {searchStatus === "empty" && (
+              <EmptyState radiusKm={radiusKm} onBroaden={broadenSearch} />
+            )}
+
+            {searchStatus === "results" && (
+              <>
+                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-primary-deep">
+                      Your shortlist
+                    </p>
+                    <h2 className="mt-1 font-editorial text-3xl font-normal text-ink sm:text-4xl">
+                      People near your location
+                    </h2>
+                    <p className="mt-2 text-sm text-steel">
+                      {results.length} {results.length === 1 ? "match" : "matches"} for “
+                      {submittedQuery}”
+                    </p>
+                  </div>
+                  <p className="text-sm text-steel">Within {radiusKm} km · Most relevant first</p>
+                </div>
+                <div className="grid gap-5 md:grid-cols-2">
+                  {results.map((person) => (
+                    <PersonCard
+                      key={person.id}
+                      person={person}
+                      connectionState={connectionStates[person.id] ?? { status: "none" }}
+                      onConnect={(selectedPerson) => void connectWith(selectedPerson)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       </main>
 
-      <footer className="relative z-[1] border-t border-ink/10 px-5 py-7 text-sm text-moss sm:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p>© 2026 Brea · Built for meaningful proximity.</p>
-          <p className="max-w-xl text-xs leading-relaxed sm:text-right">Your exact location is private. Other members see only your chosen profile details and approximate distance.</p>
+      <div className="sunset-stripe h-8" aria-hidden="true" />
+      <footer className="bg-cream px-4 py-8 text-xs text-steel sm:px-8">
+        <div className="mx-auto flex max-w-[1280px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-editorial text-xl text-ink">Brea</span>
+            <span>© 2026 · Find relevant people nearby.</span>
+          </div>
+          <p className="max-w-xl leading-5 sm:text-right">
+            Your exact location is private. Other members see only your chosen profile details and
+            approximate distance.
+          </p>
         </div>
       </footer>
     </div>
