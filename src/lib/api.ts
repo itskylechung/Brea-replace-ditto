@@ -2,10 +2,14 @@ import { getInsforgeClient } from "./insforge";
 import type { UserSchema } from "@insforge/sdk";
 import type {
   BreaProfile,
+  ConnectionDecisionResponse,
+  ConnectionInboxResponse,
+  ConnectionItem,
   ConnectionResponse,
   PeopleSearchResponse,
   PersonMatch,
   ProfileUpdateInput,
+  ReportReason,
 } from "../types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -101,7 +105,10 @@ function parsePerson(value: unknown): PersonMatch {
   }
 
   const status = valueAt(value, "connectionStatus", "connection_status");
-  if (status !== "none" && status !== "pending") {
+  if (
+    status !== "none" && status !== "outgoing_pending" &&
+    status !== "incoming_pending" && status !== "accepted"
+  ) {
     throw new Error("The backend returned an invalid connection status.");
   }
 
@@ -134,16 +141,68 @@ function parseConnectionResponse(value: unknown): ConnectionResponse {
 
   const recipientId = valueAt(value, "recipientId", "recipient_id");
   const createdAt = valueAt(value, "createdAt", "created_at");
-  if (value.status !== "pending" || typeof value.created !== "boolean") {
+  if ((value.status !== "pending" && value.status !== "accepted") || typeof value.created !== "boolean") {
     throw new Error("The connection service returned an invalid status.");
   }
 
   return {
     id: requiredString(value.id, "connection id"),
     recipientId: requiredString(recipientId, "recipient id"),
-    status: "pending",
+    status: value.status,
     createdAt: requiredString(createdAt, "creation time"),
     created: value.created,
+  };
+}
+
+function parseConnectionItem(value: unknown): ConnectionItem {
+  if (!isRecord(value) || !isRecord(value.person)) {
+    throw new Error("The request service returned an invalid item.");
+  }
+  if (value.direction !== "incoming" && value.direction !== "outgoing") {
+    throw new Error("The request service returned an invalid direction.");
+  }
+  if (value.status !== "pending" && value.status !== "accepted" && value.status !== "declined") {
+    throw new Error("The request service returned an invalid status.");
+  }
+  const person = value.person;
+  return {
+    id: requiredString(value.id, "request id"),
+    direction: value.direction,
+    status: value.status,
+    sourceQuery: requiredString(valueAt(value, "sourceQuery", "source_query"), "request context"),
+    createdAt: requiredString(valueAt(value, "createdAt", "created_at"), "request creation time"),
+    respondedAt: nullableString(valueAt(value, "respondedAt", "responded_at")),
+    person: {
+      id: requiredString(person.id, "person id"),
+      name: requiredString(person.name, "person name"),
+      avatarUrl: nullableString(valueAt(person, "avatarUrl", "avatar_url")),
+      headline: nullableString(person.headline),
+      locationLabel: nullableString(valueAt(person, "locationLabel", "location_label")),
+      linkedinProfileUrl: nullableString(
+        valueAt(person, "linkedinProfileUrl", "linkedin_profile_url"),
+      ),
+    },
+  };
+}
+
+function parseInboxResponse(value: unknown): ConnectionInboxResponse {
+  if (!isRecord(value) || !Array.isArray(value.incoming) || !Array.isArray(value.outgoing)) {
+    throw new Error("The request service returned an invalid response.");
+  }
+  return {
+    incoming: value.incoming.map(parseConnectionItem),
+    outgoing: value.outgoing.map(parseConnectionItem),
+  };
+}
+
+function parseDecisionResponse(value: unknown): ConnectionDecisionResponse {
+  if (!isRecord(value) || (value.status !== "accepted" && value.status !== "declined")) {
+    throw new Error("The request service returned an invalid decision.");
+  }
+  return {
+    id: requiredString(value.id, "request id"),
+    status: value.status,
+    respondedAt: requiredString(valueAt(value, "respondedAt", "responded_at"), "response time"),
   };
 }
 
@@ -260,4 +319,56 @@ export async function sendConnectionRequest(input: {
     throw new Error(errorMessage(error, "We could not send this request. Please try again."));
   }
   return parseConnectionResponse(data);
+}
+
+export async function listConnectionInbox(): Promise<ConnectionInboxResponse> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>("connection-inbox", {
+    body: {},
+  });
+  if (error) throw new Error(errorMessage(error, "We could not load your requests."));
+  return parseInboxResponse(data);
+}
+
+export async function respondToConnection(input: {
+  connectionId: string;
+  action: "accept" | "decline";
+}): Promise<ConnectionDecisionResponse> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>("connection-respond", {
+    body: input,
+  });
+  if (error) throw new Error(errorMessage(error, "We could not update this request."));
+  return parseDecisionResponse(data);
+}
+
+export async function blockProfile(profileId: string): Promise<void> {
+  const { error } = await getInsforgeClient().functions.invoke("profile-safety", {
+    body: { action: "block", profileId },
+  });
+  if (error) throw new Error(errorMessage(error, "We could not hide this profile."));
+}
+
+export async function reportProfile(input: {
+  profileId: string;
+  reason: ReportReason;
+  details?: string;
+}): Promise<void> {
+  const { error } = await getInsforgeClient().functions.invoke("profile-safety", {
+    body: {
+      action: "report",
+      profileId: input.profileId,
+      reason: input.reason,
+      details: input.details?.trim() || null,
+    },
+  });
+  if (error) throw new Error(errorMessage(error, "We could not submit your report."));
+}
+
+export async function trackProductEvent(
+  eventName: "sign_in_completed" | "profile_completed" | "profile_updated",
+  properties: Record<string, string | number | boolean | null> = {},
+): Promise<void> {
+  const { error } = await getInsforgeClient().functions.invoke("track-event", {
+    body: { eventName, properties },
+  });
+  if (error) throw new Error(errorMessage(error, "The event could not be recorded."));
 }

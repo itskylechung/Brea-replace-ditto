@@ -21,7 +21,7 @@ export type ConnectionInput = {
 type ConnectionRow = {
   id: string;
   recipient_id: string;
-  status: "pending";
+  status: "pending" | "accepted" | "declined";
   created_at: string;
 };
 
@@ -144,6 +144,18 @@ function connectionResponse(connection: ConnectionRow, created: boolean) {
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === "object" &&
     (error as { code?: unknown }).code === "23505";
+}
+
+async function recordConnectionRequested(
+  admin: ReturnType<typeof createAdminClient>,
+  senderId: string,
+  recipientId: string,
+) {
+  await admin.database.from("product_events").insert([{
+    profile_id: senderId,
+    event_name: "connection_requested",
+    properties: { recipientId },
+  }]);
 }
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -294,6 +306,68 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
+  const [blockedBySenderResult, blockedSenderResult] = await Promise.all([
+    admin.database.from("profile_blocks").select("id")
+      .eq("blocker_profile_id", sender.id)
+      .eq("blocked_profile_id", recipient.id)
+      .maybeSingle(),
+    admin.database.from("profile_blocks").select("id")
+      .eq("blocker_profile_id", recipient.id)
+      .eq("blocked_profile_id", sender.id)
+      .maybeSingle(),
+  ]);
+  if (blockedBySenderResult.error || blockedSenderResult.error) {
+    return jsonResponse(
+      { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
+      500,
+      origin,
+      allowedOrigins,
+    );
+  }
+  if (blockedBySenderResult.data || blockedSenderResult.data) {
+    return jsonResponse(
+      { code: "RECIPIENT_UNAVAILABLE", message: "The selected profile is unavailable." },
+      409,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  const { data: reverseData, error: reverseError } = await admin.database
+    .from("connections")
+    .select("id, status")
+    .eq("sender_id", recipient.id)
+    .eq("recipient_id", sender.id)
+    .maybeSingle();
+  if (reverseError) {
+    return jsonResponse(
+      { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
+      500,
+      origin,
+      allowedOrigins,
+    );
+  }
+  const reverseConnection = reverseData as unknown as {
+    id: string;
+    status: "pending" | "accepted" | "declined";
+  } | null;
+  if (reverseConnection?.status === "pending") {
+    return jsonResponse(
+      { code: "INCOMING_REQUEST_EXISTS", message: "This person already sent you a request. Review it in Requests." },
+      409,
+      origin,
+      allowedOrigins,
+    );
+  }
+  if (reverseConnection?.status === "accepted") {
+    return jsonResponse(
+      { code: "ALREADY_CONNECTED", message: "You are already connected." },
+      409,
+      origin,
+      allowedOrigins,
+    );
+  }
+
   const selectConnection = () =>
     admin.database
       .from("connections")
@@ -313,8 +387,36 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   if (existingData) {
+    const existing = existingData as unknown as ConnectionRow;
+    if (existing.status === "declined") {
+      const { data: retriedData, error: retryError } = await admin.database
+        .from("connections")
+        .update({
+          status: "pending",
+          source_query: validatedInput.value.sourceQuery,
+          responded_at: null,
+        })
+        .eq("id", existing.id)
+        .select("id, recipient_id, status, created_at")
+        .single();
+      if (!retryError && retriedData) {
+        await recordConnectionRequested(admin, sender.id, validatedInput.value.recipientId);
+        return jsonResponse(
+          connectionResponse(retriedData as unknown as ConnectionRow, true),
+          200,
+          origin,
+          allowedOrigins,
+        );
+      }
+      return jsonResponse(
+        { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
+        500,
+        origin,
+        allowedOrigins,
+      );
+    }
     return jsonResponse(
-      connectionResponse(existingData as unknown as ConnectionRow, false),
+      connectionResponse(existing, false),
       200,
       origin,
       allowedOrigins,
@@ -334,6 +436,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .single();
 
   if (!insertError && insertedData) {
+    await recordConnectionRequested(admin, sender.id, validatedInput.value.recipientId);
     return jsonResponse(
       connectionResponse(insertedData as unknown as ConnectionRow, true),
       200,

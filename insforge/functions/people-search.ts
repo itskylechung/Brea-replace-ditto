@@ -470,6 +470,29 @@ async function handleRequest(request: Request): Promise<Response> {
   const senderLatitude = sender.latitude as number;
   const senderLongitude = sender.longitude as number;
 
+  const [blockedBySenderResult, blockedSenderResult] = await Promise.all([
+    admin.database.from("profile_blocks").select("blocked_profile_id")
+      .eq("blocker_profile_id", sender.id),
+    admin.database.from("profile_blocks").select("blocker_profile_id")
+      .eq("blocked_profile_id", sender.id),
+  ]);
+  if (blockedBySenderResult.error || blockedSenderResult.error) {
+    return jsonResponse(
+      { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
+      500,
+      origin,
+      allowedOrigins,
+    );
+  }
+  const blockedProfileIds = new Set<string>([
+    ...(blockedBySenderResult.data ?? []).map((row) =>
+      (row as unknown as { blocked_profile_id: string }).blocked_profile_id
+    ),
+    ...(blockedSenderResult.data ?? []).map((row) =>
+      (row as unknown as { blocker_profile_id: string }).blocker_profile_id
+    ),
+  ]);
+
   const { data: candidateData, error: candidateError } = await admin.database
     .from("profiles")
     .select(
@@ -489,7 +512,8 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
-  const candidates = (candidateData ?? []) as unknown as ProfileRow[];
+  const candidates = ((candidateData ?? []) as unknown as ProfileRow[])
+    .filter((profile) => !blockedProfileIds.has(profile.id));
   const ranked = candidates.flatMap((profile) => {
     if (!isValidCoordinate(profile.latitude, profile.longitude)) return [];
 
@@ -506,17 +530,20 @@ async function handleRequest(request: Request): Promise<Response> {
   }).sort(compareRankedProfiles).slice(0, validatedInput.value.limit);
 
   const resultIds = ranked.map((match) => match.profile.id);
-  const pendingRecipients = new Set<string>();
+  const connectionStatuses = new Map<
+    string,
+    "outgoing_pending" | "incoming_pending" | "accepted"
+  >();
 
   if (resultIds.length > 0) {
-    const { data: connectionData, error: connectionError } = await admin.database
-      .from("connections")
-      .select("recipient_id")
-      .eq("sender_id", sender.id)
-      .eq("status", "pending")
-      .in("recipient_id", resultIds);
+    const [outgoingResult, incomingResult] = await Promise.all([
+      admin.database.from("connections").select("recipient_id, status")
+        .eq("sender_id", sender.id).in("recipient_id", resultIds),
+      admin.database.from("connections").select("sender_id, status")
+        .eq("recipient_id", sender.id).in("sender_id", resultIds),
+    ]);
 
-    if (connectionError) {
+    if (outgoingResult.error || incomingResult.error) {
       return jsonResponse(
         { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
         500,
@@ -525,8 +552,32 @@ async function handleRequest(request: Request): Promise<Response> {
       );
     }
 
-    for (const connection of (connectionData ?? []) as unknown as { recipient_id: string }[]) {
-      pendingRecipients.add(connection.recipient_id);
+    for (
+      const connection of (outgoingResult.data ?? []) as unknown as {
+        recipient_id: string;
+        status: "pending" | "accepted" | "declined";
+      }[]
+    ) {
+      if (connection.status === "accepted") {
+        connectionStatuses.set(connection.recipient_id, "accepted");
+      } else if (connection.status === "pending") {
+        connectionStatuses.set(connection.recipient_id, "outgoing_pending");
+      }
+    }
+    for (
+      const connection of (incomingResult.data ?? []) as unknown as {
+        sender_id: string;
+        status: "pending" | "accepted" | "declined";
+      }[]
+    ) {
+      if (connection.status === "accepted") {
+        connectionStatuses.set(connection.sender_id, "accepted");
+      } else if (
+        connection.status === "pending" &&
+        connectionStatuses.get(connection.sender_id) !== "accepted"
+      ) {
+        connectionStatuses.set(connection.sender_id, "incoming_pending");
+      }
     }
   }
 
@@ -541,8 +592,18 @@ async function handleRequest(request: Request): Promise<Response> {
     interests: profile.interests,
     availability: profile.availability,
     matchReason,
-    connectionStatus: pendingRecipients.has(profile.id) ? "pending" : "none",
+    connectionStatus: connectionStatuses.get(profile.id) ?? "none",
   }));
+
+  await admin.database.from("product_events").insert([{
+    profile_id: sender.id,
+    event_name: "search_completed",
+    properties: {
+      radiusKm: validatedInput.value.radiusKm,
+      resultCount: results.length,
+      queryLength: validatedInput.value.query.length,
+    },
+  }]);
 
   return jsonResponse({ results }, 200, origin, allowedOrigins);
 }
