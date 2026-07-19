@@ -104,7 +104,10 @@ function parsePerson(value: unknown): PersonMatch {
     throw new Error("The backend response is missing a valid distance.");
   }
 
-  const status = valueAt(value, "connectionStatus", "connection_status");
+  // "pending" is the pre-lifecycle backend value; mapping it here lets this
+  // frontend ship before the updated people-search function.
+  const rawStatus = valueAt(value, "connectionStatus", "connection_status");
+  const status = rawStatus === "pending" ? "outgoing_pending" : rawStatus;
   if (
     status !== "none" && status !== "outgoing_pending" &&
     status !== "incoming_pending" && status !== "accepted"
