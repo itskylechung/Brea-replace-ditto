@@ -31,36 +31,30 @@ function readableError(error: unknown, fallback: string): string {
 export function App() {
   const auth = useAuth();
   const [profile, setProfile] = useState<BreaProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const user = auth.user;
-    if (!user) return;
+    if (!auth.user) return;
 
-    void Promise.resolve().then(async () => {
-      if (cancelled) return;
-      setProfileLoading(true);
-      setProfileError(null);
-      try {
-        const nextProfile = await ensureCurrentProfile(user);
-        if (!cancelled) setProfile(nextProfile);
-      } catch (error) {
+    void ensureCurrentProfile(auth.user)
+      .then((nextProfile) => {
         if (!cancelled) {
-          setProfileError(readableError(error, "We could not load your profile."));
+          setProfileError(null);
+          setProfile(nextProfile);
         }
-      } finally {
-        if (!cancelled) setProfileLoading(false);
-      }
-    });
-
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setProfileError(readableError(error, "We could not load your profile."));
+      });
     return () => {
       cancelled = true;
     };
   }, [auth.user]);
 
-  if (auth.isLoading || profileLoading) {
+  const profilePending = Boolean(auth.user && !profileError && profile?.userId !== auth.user.id);
+
+  if (auth.isLoading || profilePending) {
     return (
       <div className="grid min-h-screen place-items-center bg-cream text-ink" role="status">
         <div className="text-center">
