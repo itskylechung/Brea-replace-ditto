@@ -1,0 +1,156 @@
+import { useState } from "react";
+import type { BreaProfile, ProfileUpdateInput } from "../types";
+import { BreaMark } from "./BreaMark";
+
+function tagsFrom(value: string): string[] {
+  return [...new Set(value.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 20);
+}
+
+export function ProfileSetup({
+  profile,
+  onSave,
+  onSignOut,
+}: {
+  profile: BreaProfile;
+  onSave: (input: ProfileUpdateInput) => Promise<void>;
+  onSignOut: () => Promise<void>;
+}) {
+  const [name, setName] = useState(profile.name);
+  const [headline, setHeadline] = useState(profile.headline ?? "");
+  const [bio, setBio] = useState(profile.bio ?? "");
+  const [skills, setSkills] = useState(profile.skills.join(", "));
+  const [interests, setInterests] = useState(profile.interests.join(", "));
+  const [availability, setAvailability] = useState(profile.availability ?? "");
+  const [locationLabel, setLocationLabel] = useState(profile.locationLabel ?? "");
+  const [linkedinProfileUrl, setLinkedinProfileUrl] = useState(profile.linkedinProfileUrl ?? "");
+  const [latitude, setLatitude] = useState<number | null>(profile.latitude);
+  const [longitude, setLongitude] = useState<number | null>(profile.longitude);
+  const [isLocating, setIsLocating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function useCurrentLocation() {
+    setError(null);
+    if (!navigator.geolocation) {
+      setError("This browser cannot provide a location.");
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setLatitude(coords.latitude);
+        setLongitude(coords.longitude);
+        setIsLocating(false);
+      },
+      () => {
+        setError("We could not read your location. Check your browser permission and try again.");
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+    );
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    if (!name.trim() || !headline.trim() || !locationLabel.trim()) {
+      setError("Name, headline, and general location are required.");
+      return;
+    }
+    if (latitude === null || longitude === null) {
+      setError("Use your current location so Brea can calculate distance privately.");
+      return;
+    }
+    const linkedInUrl = linkedinProfileUrl.trim();
+    if (linkedInUrl && !/^https:\/\/(?:[a-z]{2}\.)?linkedin\.com\/in\/[A-Za-z0-9%_-]+\/?(?:\?.*)?$/.test(linkedInUrl)) {
+      setError("Enter a valid LinkedIn profile URL, such as https://www.linkedin.com/in/your-name.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        headline: headline.trim(),
+        bio: bio.trim() || null,
+        skills: tagsFrom(skills),
+        interests: tagsFrom(interests),
+        availability: availability.trim() || null,
+        locationLabel: locationLabel.trim(),
+        latitude,
+        longitude,
+        linkedinProfileUrl: linkedInUrl || null,
+        onboardingCompleted: true,
+        isDiscoverable: true,
+        isAvailable: true,
+      });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Your profile could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const fieldClass = "mt-2 w-full rounded-2xl border border-ink/10 bg-white/80 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-moss/55 focus:border-forest/45 focus:ring-2 focus:ring-forest/10";
+
+  return (
+    <div className="min-h-screen bg-cream px-5 py-7 text-ink sm:px-8">
+      <header className="mx-auto flex w-full max-w-4xl items-center justify-between">
+        <BreaMark />
+        <button type="button" onClick={() => void onSignOut()} className="text-sm font-bold text-moss hover:text-ink">Sign out</button>
+      </header>
+      <main className="mx-auto max-w-4xl py-12">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-coral">One-minute setup</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">Review what people will see.</h1>
+        <p className="mt-4 max-w-2xl leading-relaxed text-moss">LinkedIn gave us the basics. Add the context that makes a nearby introduction useful. Exact coordinates are never shown to other members.</p>
+
+        <form onSubmit={(event) => void submit(event)} className="mt-9 grid gap-6 rounded-[2rem] border border-paper/80 bg-paper/65 p-6 shadow-card sm:grid-cols-2 sm:p-9">
+          <label className="text-sm font-bold">Name
+            <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold">Headline
+            <input value={headline} onChange={(event) => setHeadline(event.target.value)} maxLength={180} required placeholder="Product designer building climate tools" className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold sm:col-span-2">Short bio
+            <textarea value={bio} onChange={(event) => setBio(event.target.value)} maxLength={1000} rows={3} className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold">Skills <span className="font-normal text-moss">(comma-separated)</span>
+            <input value={skills} onChange={(event) => setSkills(event.target.value)} placeholder="TypeScript, product strategy" className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold">Interests <span className="font-normal text-moss">(comma-separated)</span>
+            <input value={interests} onChange={(event) => setInterests(event.target.value)} placeholder="Climate tech, cycling" className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold">Availability
+            <input value={availability} onChange={(event) => setAvailability(event.target.value)} maxLength={180} placeholder="Coffee on weekday afternoons" className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold">General location
+            <input value={locationLabel} onChange={(event) => setLocationLabel(event.target.value)} maxLength={120} required placeholder="Da'an District, Taipei" className={fieldClass} />
+          </label>
+          <label className="text-sm font-bold sm:col-span-2">LinkedIn profile URL <span className="font-normal text-moss">(optional)</span>
+            <input type="url" value={linkedinProfileUrl} onChange={(event) => setLinkedinProfileUrl(event.target.value)} placeholder="https://www.linkedin.com/in/your-name" className={fieldClass} />
+          </label>
+
+          <div className="rounded-2xl border border-forest/10 bg-forest/[0.04] p-4 sm:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold">Private distance origin</p>
+                <p className="mt-1 text-xs leading-relaxed text-moss">Stored securely and used only to calculate approximate distance.</p>
+              </div>
+              <button type="button" onClick={useCurrentLocation} disabled={isLocating} className="rounded-full border border-forest/20 bg-white px-4 py-2 text-sm font-bold text-forest disabled:opacity-50">
+                {isLocating ? "Locating…" : latitude === null ? "Use current location" : "Location added ✓"}
+              </button>
+            </div>
+          </div>
+
+          {error && <p role="alert" className="text-sm text-[#a44734] sm:col-span-2">{error}</p>}
+          <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-lg text-xs leading-relaxed text-moss">Saving publishes this profile to signed-in Brea members. You remain in control of future edits and visibility.</p>
+            <button type="submit" disabled={isSaving} className="rounded-full bg-forest px-6 py-3 text-sm font-bold text-white transition hover:bg-ink disabled:opacity-50">
+              {isSaving ? "Saving…" : "Save and start exploring"}
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
+  );
+}

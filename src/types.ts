@@ -26,6 +26,41 @@ export interface ConnectionResponse {
   created: boolean;
 }
 
+export interface BreaProfile {
+  id: string;
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  headline: string | null;
+  bio: string | null;
+  skills: string[];
+  interests: string[];
+  availability: string | null;
+  locationLabel: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  linkedinProfileUrl: string | null;
+  onboardingCompleted: boolean;
+  isDiscoverable: boolean;
+  isAvailable: boolean;
+}
+
+export interface ProfileUpdateInput {
+  name: string;
+  headline: string;
+  bio: string | null;
+  skills: string[];
+  interests: string[];
+  availability: string | null;
+  locationLabel: string | null;
+  latitude: number;
+  longitude: number;
+  linkedinProfileUrl: string | null;
+  onboardingCompleted: boolean;
+  isDiscoverable: boolean;
+  isAvailable: boolean;
+}
+
 export type SearchStatus = "idle" | "loading" | "results" | "empty" | "error";
 
 export type ConnectionUiState =

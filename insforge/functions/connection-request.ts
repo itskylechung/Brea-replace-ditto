@@ -1,4 +1,4 @@
-import { createAdminClient } from "npm:@insforge/sdk@1.4.5";
+import { createAdminClient, createClient } from "npm:@insforge/sdk@1.4.5";
 
 const MIN_SOURCE_QUERY_LENGTH = 2;
 const MAX_SOURCE_QUERY_LENGTH = 200;
@@ -78,6 +78,13 @@ export function parseAllowedOrigins(value: string | undefined): Set<string> {
   );
 }
 
+export function bearerToken(headers: Headers): string | null {
+  const authorization = headers.get("Authorization")?.trim();
+  if (!authorization) return null;
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
 function corsHeaders(origin: string | null, allowedOrigins: Set<string>): Headers {
   const headers = new Headers({
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -107,23 +114,21 @@ function jsonResponse(
 function configuration(): ValidationResult<{
   baseUrl: string;
   apiKey: string;
-  senderId: string;
 }> {
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")?.trim();
   const apiKey = Deno.env.get("API_KEY")?.trim();
-  const senderId = Deno.env.get("BREA_MVP_PROFILE_ID")?.trim();
 
-  if (!baseUrl || !apiKey || !isUuid(senderId)) {
+  if (!baseUrl || !apiKey) {
     return {
       ok: false,
       error: {
-        code: "MVP_PROFILE_UNAVAILABLE",
-        message: "The MVP connection profile is unavailable.",
+        code: "SERVICE_UNAVAILABLE",
+        message: "The connection service is temporarily unavailable.",
       },
     };
   }
 
-  return { ok: true, value: { baseUrl, apiKey, senderId } };
+  return { ok: true, value: { baseUrl, apiKey } };
 }
 
 function connectionResponse(connection: ConnectionRow, created: boolean) {
@@ -189,10 +194,22 @@ async function handleRequest(request: Request): Promise<Response> {
     return jsonResponse(config.error, 503, origin, allowedOrigins);
   }
 
-  if (validatedInput.value.recipientId === config.value.senderId) {
+  const accessToken = bearerToken(request.headers);
+  if (!accessToken) {
     return jsonResponse(
-      { code: "SELF_CONNECTION", message: "You cannot connect with yourself." },
-      400,
+      { code: "AUTH_REQUIRED", message: "Sign in to send a connection request." },
+      401,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
+  const { data: currentUserData, error: currentUserError } = await authClient.auth.getCurrentUser();
+  if (currentUserError || !currentUserData?.user) {
+    return jsonResponse(
+      { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
+      401,
       origin,
       allowedOrigins,
     );
@@ -203,10 +220,45 @@ async function handleRequest(request: Request): Promise<Response> {
     apiKey: config.value.apiKey,
   });
 
+  const { data: senderData, error: senderError } = await admin.database
+    .from("profiles")
+    .select("id, onboarding_completed")
+    .eq("user_id", currentUserData.user.id)
+    .maybeSingle();
+
+  if (senderError) {
+    return jsonResponse(
+      { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
+      500,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  const sender = senderData as { id: string; onboarding_completed: boolean } | null;
+  if (!sender || !sender.onboarding_completed) {
+    return jsonResponse(
+      { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile before connecting." },
+      409,
+      origin,
+      allowedOrigins,
+    );
+  }
+
+  if (validatedInput.value.recipientId === sender.id) {
+    return jsonResponse(
+      { code: "SELF_CONNECTION", message: "You cannot connect with yourself." },
+      400,
+      origin,
+      allowedOrigins,
+    );
+  }
+
   const { data: profileData, error: profileError } = await admin.database
     .from("profiles")
-    .select("id, is_discoverable, is_available")
-    .in("id", [config.value.senderId, validatedInput.value.recipientId]);
+    .select("id, is_discoverable, is_available, onboarding_completed")
+    .eq("id", validatedInput.value.recipientId)
+    .maybeSingle();
 
   if (profileError) {
     return jsonResponse(
@@ -217,25 +269,12 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
-  const profiles = (profileData ?? []) as unknown as {
+  const recipient = profileData as unknown as {
     id: string;
     is_discoverable: boolean;
     is_available: boolean;
-  }[];
-  const sender = profiles.find((profile) => profile.id === config.value.senderId);
-  const recipient = profiles.find((profile) => profile.id === validatedInput.value.recipientId);
-
-  if (!sender) {
-    return jsonResponse(
-      {
-        code: "MVP_PROFILE_UNAVAILABLE",
-        message: "The MVP connection profile is unavailable.",
-      },
-      503,
-      origin,
-      allowedOrigins,
-    );
-  }
+    onboarding_completed: boolean;
+  } | null;
 
   if (!recipient) {
     return jsonResponse(
@@ -246,7 +285,7 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
-  if (!recipient.is_discoverable || !recipient.is_available) {
+  if (!recipient.onboarding_completed || !recipient.is_discoverable || !recipient.is_available) {
     return jsonResponse(
       { code: "RECIPIENT_UNAVAILABLE", message: "The selected profile is unavailable." },
       409,
@@ -259,7 +298,7 @@ async function handleRequest(request: Request): Promise<Response> {
     admin.database
       .from("connections")
       .select("id, recipient_id, status, created_at")
-      .eq("sender_id", config.value.senderId)
+      .eq("sender_id", sender.id)
       .eq("recipient_id", validatedInput.value.recipientId)
       .maybeSingle();
 
@@ -286,7 +325,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .from("connections")
     .insert([{
       id: crypto.randomUUID(),
-      sender_id: config.value.senderId,
+      sender_id: sender.id,
       recipient_id: validatedInput.value.recipientId,
       status: "pending",
       source_query: validatedInput.value.sourceQuery,
