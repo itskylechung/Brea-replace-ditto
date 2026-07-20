@@ -17,7 +17,7 @@
 
 > **Amendments to this contract**
 >
-> - 2026-07-20 — FE-07 (#42): geolocation moved from onboarding requirement to first-search prompt.
+> - 2026-07-20 — FE-07 (#42): geolocation moved from onboarding requirement to first-search prompt. Discovery defaults are location-gated; a member who defers location stays non-discoverable until they enable discovery after adding a location.
 
 ## 1. Product Summary
 
@@ -132,7 +132,8 @@ for stored reports and blocks.
     or to search nearby. Used only to compute approximate distance; the coordinates are never shown to
     anyone.
   - Discovery controls: **Show me in discovery** (`isDiscoverable`) and **Open to new connections**
-    (`isAvailable`), both defaulting on during onboarding.
+    (`isAvailable`), both defaulting on during onboarding **when a location is provided; without one,
+    "Show me in discovery" is disabled and saved off until a location is added later**.
 - Saving onboarding sets `onboarding_completed = true` and emits `profile_completed`.
 - **Editing** ("editing" mode) reopens the same form; saving emits `profile_updated`.
 - A profile becomes discoverable only when it is onboarded, discoverable, available, and has a

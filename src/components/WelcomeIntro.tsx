@@ -79,7 +79,7 @@ export function WelcomeIntro({ onDone }: { onDone: () => void }): JSX.Element {
               />
             ))}
           </div>
-          <p className="sr-only">Step {step + 1} of 3</p>
+          <p className="sr-only" aria-live="polite">Step {step + 1} of 3</p>
 
           <button
             type="button"

@@ -25,6 +25,8 @@ CHECK constraint in `migrations/20260719073000_authenticated-connection-lifecycl
 
 `product_events` columns used below: `profile_id`, `event_name`, `created_at`.
 
+product_events.profile_id is nullable; sign_in_completed is recorded after profile provisioning, so null rows are not expected today — if they ever appear, distinct-profile counts will undercount.
+
 ## Funnel queries
 
 ### (a) Sign-ins — distinct profiles, total and per day
@@ -95,6 +97,8 @@ SELECT
   ) AS acceptance_rate_pct
 FROM connections;
 ```
+
+Note: blocking a member force-declines any existing connection between the pair (profile-safety), so declined counts include block-driven declines and the acceptance rate reads slightly low.
 
 ### (e) 7-day active searchers
 

@@ -211,7 +211,7 @@ export function ProfileSetup({
                 <p className="text-sm font-bold">Private distance origin</p>
                 <p className="mt-1 text-xs leading-relaxed text-moss">
                   {latitude === null
-                    ? "Optional for now — without it you won't appear in discovery and can't search nearby. We'll ask again when you first search."
+                    ? "Optional for now — we'll ask when you first search. Without a location you can't search nearby and you stay hidden from discovery."
                     : "Stored securely and used only to calculate approximate distance."}
                 </p>
               </div>

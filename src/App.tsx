@@ -304,6 +304,7 @@ function DiscoveryApp({
   }
 
   async function executeSearch(normalizedQuery: string, searchRadius: number) {
+    setPendingSearch(null);
     setSearchError(null);
     setSearchStatus("loading");
     setSubmittedQuery(normalizedQuery);
@@ -347,7 +348,7 @@ function DiscoveryApp({
     if (!target) return;
     setLocateError(null);
     if (!navigator.geolocation) {
-      setLocateError("We could not read your location. Check your browser permission and try again.");
+      setLocateError("This browser cannot provide a location.");
       return;
     }
     setIsLocating(true);
@@ -585,7 +586,7 @@ function DiscoveryApp({
             aria-live="polite"
             aria-busy={isLoading}
           >
-            {pendingSearch && (
+            {pendingSearch && needsLocation && (
               <div className="rounded-xl border border-beige bg-cream-light px-6 py-12 text-center">
                 <h2 className="font-editorial text-3xl font-normal tracking-[-0.02em] text-ink">
                   Add your location to search nearby
