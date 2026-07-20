@@ -162,6 +162,7 @@ Deno.test("handler rejects a non-allowlisted origin with CORS metadata", async (
     assertEquals(await response.json(), {
       code: "ORIGIN_NOT_ALLOWED",
       message: "This origin is not allowed.",
+      error: "ORIGIN_NOT_ALLOWED",
     });
     assertEquals(response.headers.get("Access-Control-Allow-Origin"), null);
   } finally {

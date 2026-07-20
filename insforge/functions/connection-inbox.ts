@@ -53,6 +53,17 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+// Mirror the coded `code` into the SDK-standard `error` key so @insforge/sdk's
+// parseResponse surfaces the real code/message instead of a generic fallback.
+function errorResponse(
+  error: ApiError,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
+  return jsonResponse({ ...error, error: error.code }, status, origin, allowedOrigins);
+}
+
 function configuration(): ValidationResult<{ baseUrl: string; apiKey: string }> {
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")?.trim();
   const apiKey = Deno.env.get("API_KEY")?.trim();
@@ -112,7 +123,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
 
   if (origin && !allowedOrigins.has(origin)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." },
       403,
       origin,
@@ -123,7 +134,7 @@ async function handleRequest(request: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: corsHeaders(origin, allowedOrigins) });
   }
   if (request.method !== "POST") {
-    return jsonResponse(
+    return errorResponse(
       { code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." },
       405,
       origin,
@@ -132,11 +143,11 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   const config = configuration();
-  if (!config.ok) return jsonResponse(config.error, 503, origin, allowedOrigins);
+  if (!config.ok) return errorResponse(config.error, 503, origin, allowedOrigins);
 
   const accessToken = bearerToken(request.headers);
   if (!accessToken) {
-    return jsonResponse(
+    return errorResponse(
       { code: "AUTH_REQUIRED", message: "Sign in to view your requests." },
       401,
       origin,
@@ -147,7 +158,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
   const { data: userData, error: userError } = await authClient.auth.getCurrentUser();
   if (userError || !userData?.user) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
       401,
       origin,
@@ -162,7 +173,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .eq("user_id", userData.user.id)
     .maybeSingle();
   if (profileError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Requests are temporarily unavailable." },
       500,
       origin,
@@ -172,7 +183,7 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const currentProfile = profileData as { id: string } | null;
   if (!currentProfile) {
-    return jsonResponse(
+    return errorResponse(
       { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile first." },
       409,
       origin,
@@ -190,7 +201,7 @@ async function handleRequest(request: Request): Promise<Response> {
   ]);
 
   if (incomingResult.error || outgoingResult.error) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Requests are temporarily unavailable." },
       500,
       origin,
@@ -214,7 +225,7 @@ async function handleRequest(request: Request): Promise<Response> {
       .select("id, name, avatar_url, headline, location_label, linkedin_profile_url")
       .in("id", profileIds);
     if (peopleError) {
-      return jsonResponse(
+      return errorResponse(
         { code: "INTERNAL_ERROR", message: "Requests are temporarily unavailable." },
         500,
         origin,
@@ -241,7 +252,7 @@ export async function handler(request: Request): Promise<Response> {
     allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
     return await handleRequest(request);
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Requests are temporarily unavailable." },
       500,
       origin,

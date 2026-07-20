@@ -169,6 +169,7 @@ Deno.test("handler returns structured invalid-request errors with CORS", async (
     assertEquals(await response.json(), {
       code: "INVALID_REQUEST",
       message: "Request body must contain valid JSON.",
+      error: "INVALID_REQUEST",
     });
     assertEquals(response.headers.get("Access-Control-Allow-Origin"), "https://brea.example");
     assertEquals(response.headers.get("Vary"), "Origin");

@@ -89,6 +89,17 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+// Mirror the coded `code` into the SDK-standard `error` key so @insforge/sdk's
+// parseResponse surfaces the real code/message instead of a generic fallback.
+function errorResponse(
+  error: ApiError,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
+  return jsonResponse({ ...error, error: error.code }, status, origin, allowedOrigins);
+}
+
 function configuration(): ValidationResult<{ baseUrl: string; apiKey: string }> {
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")?.trim();
   const apiKey = Deno.env.get("API_KEY")?.trim();
@@ -112,7 +123,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const origin = request.headers.get("Origin");
   const allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
   if (origin && !allowedOrigins.has(origin)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." },
       403,
       origin,
@@ -123,7 +134,7 @@ async function handleRequest(request: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: corsHeaders(origin, allowedOrigins) });
   }
   if (request.method !== "POST") {
-    return jsonResponse(
+    return errorResponse(
       { code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." },
       405,
       origin,
@@ -135,7 +146,7 @@ async function handleRequest(request: Request): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
       400,
       origin,
@@ -143,13 +154,13 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
   const input = validateSafetyInput(body);
-  if (!input.ok) return jsonResponse(input.error, 400, origin, allowedOrigins);
+  if (!input.ok) return errorResponse(input.error, 400, origin, allowedOrigins);
 
   const config = configuration();
-  if (!config.ok) return jsonResponse(config.error, 503, origin, allowedOrigins);
+  if (!config.ok) return errorResponse(config.error, 503, origin, allowedOrigins);
   const accessToken = bearerToken(request.headers);
   if (!accessToken) {
-    return jsonResponse(
+    return errorResponse(
       { code: "AUTH_REQUIRED", message: "Sign in to use safety controls." },
       401,
       origin,
@@ -160,7 +171,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
   const { data: userData, error: userError } = await authClient.auth.getCurrentUser();
   if (userError || !userData?.user) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
       401,
       origin,
@@ -172,7 +183,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const { data: currentData, error: currentError } = await admin.database
     .from("profiles").select("id").eq("user_id", userData.user.id).maybeSingle();
   if (currentError || !currentData) {
-    return jsonResponse(
+    return errorResponse(
       { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile first." },
       409,
       origin,
@@ -181,7 +192,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }
   const currentProfileId = (currentData as { id: string }).id;
   if (currentProfileId === input.value.profileId) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_TARGET", message: "You cannot take this action on your own profile." },
       400,
       origin,
@@ -192,7 +203,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const { data: targetData, error: targetError } = await admin.database
     .from("profiles").select("id").eq("id", input.value.profileId).maybeSingle();
   if (targetError || !targetData) {
-    return jsonResponse(
+    return errorResponse(
       { code: "PROFILE_NOT_FOUND", message: "That profile was not found." },
       404,
       origin,
@@ -208,7 +219,7 @@ async function handleRequest(request: Request): Promise<Response> {
       details: input.value.details,
     }]);
     if (reportError) {
-      return jsonResponse(
+      return errorResponse(
         { code: "INTERNAL_ERROR", message: "Your report could not be submitted." },
         500,
         origin,
@@ -233,7 +244,7 @@ async function handleRequest(request: Request): Promise<Response> {
     blocked_profile_id: input.value.profileId,
   }]);
   if (blockError && !isUniqueViolation(blockError)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "That profile could not be hidden." },
       500,
       origin,
@@ -275,7 +286,7 @@ export async function handler(request: Request): Promise<Response> {
     allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
     return await handleRequest(request);
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "This safety action is temporarily unavailable." },
       500,
       origin,
