@@ -131,7 +131,7 @@ function configuration(): ValidationResult<{
   return { ok: true, value: { baseUrl, apiKey } };
 }
 
-function connectionResponse(connection: ConnectionRow, created: boolean) {
+export function connectionResponse(connection: ConnectionRow, created: boolean) {
   return {
     id: connection.id,
     recipientId: connection.recipient_id,
@@ -139,6 +139,53 @@ function connectionResponse(connection: ConnectionRow, created: boolean) {
     createdAt: connection.created_at,
     created,
   };
+}
+
+export type RecipientAvailability = {
+  id: string;
+  is_discoverable: boolean;
+  is_available: boolean;
+  onboarding_completed: boolean;
+};
+
+export function recipientAvailabilityError(
+  recipient: RecipientAvailability | null,
+): { error: ApiError; status: number } | null {
+  if (!recipient) {
+    return {
+      error: { code: "RECIPIENT_NOT_FOUND", message: "The selected profile was not found." },
+      status: 404,
+    };
+  }
+  if (!recipient.onboarding_completed || !recipient.is_discoverable || !recipient.is_available) {
+    return {
+      error: { code: "RECIPIENT_UNAVAILABLE", message: "The selected profile is unavailable." },
+      status: 409,
+    };
+  }
+  return null;
+}
+
+export function reverseConnectionConflict(
+  reverse: { status: "pending" | "accepted" | "declined" } | null,
+): ApiError | null {
+  if (reverse?.status === "pending") {
+    return {
+      code: "INCOMING_REQUEST_EXISTS",
+      message: "This person already sent you a request. Review it in Requests.",
+    };
+  }
+  if (reverse?.status === "accepted") {
+    return { code: "ALREADY_CONNECTED", message: "You are already connected." };
+  }
+  return null;
+}
+
+export function existingConnectionAction(
+  existing: { status: "pending" | "accepted" | "declined" } | null,
+): "insert" | "reactivate" | "return" {
+  if (!existing) return "insert";
+  return existing.status === "declined" ? "reactivate" : "return";
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -288,19 +335,16 @@ async function handleRequest(request: Request): Promise<Response> {
     onboarding_completed: boolean;
   } | null;
 
+  const availabilityError = recipientAvailabilityError(recipient);
+  if (availabilityError) {
+    return jsonResponse(availabilityError.error, availabilityError.status, origin, allowedOrigins);
+  }
+  // recipientAvailabilityError already returns 404 for a missing recipient; this
+  // guard re-narrows the type to non-null for the remainder of the handler.
   if (!recipient) {
     return jsonResponse(
       { code: "RECIPIENT_NOT_FOUND", message: "The selected profile was not found." },
       404,
-      origin,
-      allowedOrigins,
-    );
-  }
-
-  if (!recipient.onboarding_completed || !recipient.is_discoverable || !recipient.is_available) {
-    return jsonResponse(
-      { code: "RECIPIENT_UNAVAILABLE", message: "The selected profile is unavailable." },
-      409,
       origin,
       allowedOrigins,
     );
@@ -351,21 +395,9 @@ async function handleRequest(request: Request): Promise<Response> {
     id: string;
     status: "pending" | "accepted" | "declined";
   } | null;
-  if (reverseConnection?.status === "pending") {
-    return jsonResponse(
-      { code: "INCOMING_REQUEST_EXISTS", message: "This person already sent you a request. Review it in Requests." },
-      409,
-      origin,
-      allowedOrigins,
-    );
-  }
-  if (reverseConnection?.status === "accepted") {
-    return jsonResponse(
-      { code: "ALREADY_CONNECTED", message: "You are already connected." },
-      409,
-      origin,
-      allowedOrigins,
-    );
+  const reverseConflict = reverseConnectionConflict(reverseConnection);
+  if (reverseConflict) {
+    return jsonResponse(reverseConflict, 409, origin, allowedOrigins);
   }
 
   const selectConnection = () =>
@@ -388,7 +420,7 @@ async function handleRequest(request: Request): Promise<Response> {
 
   if (existingData) {
     const existing = existingData as unknown as ConnectionRow;
-    if (existing.status === "declined") {
+    if (existingConnectionAction(existing) === "reactivate") {
       const { data: retriedData, error: retryError } = await admin.database
         .from("connections")
         .update({

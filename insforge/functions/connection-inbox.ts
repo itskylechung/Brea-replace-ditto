@@ -3,7 +3,7 @@ import { createAdminClient, createClient } from "npm:@insforge/sdk@1.4.5";
 type ApiError = { code: string; message: string };
 type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: ApiError };
 
-type ConnectionRow = {
+export type ConnectionRow = {
   id: string;
   sender_id: string;
   recipient_id: string;
@@ -13,7 +13,7 @@ type ConnectionRow = {
   responded_at: string | null;
 };
 
-type ProfileRow = {
+export type ProfileRow = {
   id: string;
   name: string;
   avatar_url: string | null;
@@ -65,7 +65,7 @@ function configuration(): ValidationResult<{ baseUrl: string; apiKey: string }> 
   return { ok: true, value: { baseUrl, apiKey } };
 }
 
-function connectionItem(
+export function connectionItem(
   connection: ConnectionRow,
   direction: "incoming" | "outgoing",
   person: ProfileRow,
@@ -86,6 +86,25 @@ function connectionItem(
       linkedinProfileUrl: connection.status === "accepted" ? person.linkedin_profile_url : null,
     },
   };
+}
+
+export function buildInbox(
+  incomingRows: ConnectionRow[],
+  outgoingRows: ConnectionRow[],
+  profilesById: Map<string, ProfileRow>,
+): {
+  incoming: ReturnType<typeof connectionItem>[];
+  outgoing: ReturnType<typeof connectionItem>[];
+} {
+  const incoming = incomingRows.flatMap((connection) => {
+    const person = profilesById.get(connection.sender_id);
+    return person ? [connectionItem(connection, "incoming", person)] : [];
+  });
+  const outgoing = outgoingRows.flatMap((connection) => {
+    const person = profilesById.get(connection.recipient_id);
+    return person ? [connectionItem(connection, "outgoing", person)] : [];
+  });
+  return { incoming, outgoing };
 }
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -161,7 +180,8 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
 
-  const connectionFields = "id, sender_id, recipient_id, status, source_query, created_at, responded_at";
+  const connectionFields =
+    "id, sender_id, recipient_id, status, source_query, created_at, responded_at";
   const [incomingResult, outgoingResult] = await Promise.all([
     admin.database.from("connections").select(connectionFields)
       .eq("recipient_id", currentProfile.id).order("created_at", { ascending: false }),
@@ -180,10 +200,12 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const incomingRows = (incomingResult.data ?? []) as unknown as ConnectionRow[];
   const outgoingRows = (outgoingResult.data ?? []) as unknown as ConnectionRow[];
-  const profileIds = [...new Set([
-    ...incomingRows.map((connection) => connection.sender_id),
-    ...outgoingRows.map((connection) => connection.recipient_id),
-  ])];
+  const profileIds = [
+    ...new Set([
+      ...incomingRows.map((connection) => connection.sender_id),
+      ...outgoingRows.map((connection) => connection.recipient_id),
+    ]),
+  ];
 
   const profilesById = new Map<string, ProfileRow>();
   if (profileIds.length > 0) {
@@ -204,16 +226,12 @@ async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
-  const incoming = incomingRows.flatMap((connection) => {
-    const person = profilesById.get(connection.sender_id);
-    return person ? [connectionItem(connection, "incoming", person)] : [];
-  });
-  const outgoing = outgoingRows.flatMap((connection) => {
-    const person = profilesById.get(connection.recipient_id);
-    return person ? [connectionItem(connection, "outgoing", person)] : [];
-  });
-
-  return jsonResponse({ incoming, outgoing }, 200, origin, allowedOrigins);
+  return jsonResponse(
+    buildInbox(incomingRows, outgoingRows, profilesById),
+    200,
+    origin,
+    allowedOrigins,
+  );
 }
 
 export async function handler(request: Request): Promise<Response> {

@@ -288,6 +288,43 @@ export function validateSearchInput(value: unknown): ValidationResult<SearchInpu
   };
 }
 
+export function collectBlockedProfileIds(
+  blockedBySender: { blocked_profile_id: string }[],
+  blockedSender: { blocker_profile_id: string }[],
+): Set<string> {
+  return new Set<string>([
+    ...blockedBySender.map((row) => row.blocked_profile_id),
+    ...blockedSender.map((row) => row.blocker_profile_id),
+  ]);
+}
+
+export type ConnectionStatus = "outgoing_pending" | "incoming_pending" | "accepted";
+
+export function buildConnectionStatuses(
+  outgoing: { recipient_id: string; status: "pending" | "accepted" | "declined" }[],
+  incoming: { sender_id: string; status: "pending" | "accepted" | "declined" }[],
+): Map<string, ConnectionStatus> {
+  const statuses = new Map<string, ConnectionStatus>();
+  for (const connection of outgoing) {
+    if (connection.status === "accepted") {
+      statuses.set(connection.recipient_id, "accepted");
+    } else if (connection.status === "pending") {
+      statuses.set(connection.recipient_id, "outgoing_pending");
+    }
+  }
+  for (const connection of incoming) {
+    if (connection.status === "accepted") {
+      statuses.set(connection.sender_id, "accepted");
+    } else if (
+      connection.status === "pending" &&
+      statuses.get(connection.sender_id) !== "accepted"
+    ) {
+      statuses.set(connection.sender_id, "incoming_pending");
+    }
+  }
+  return statuses;
+}
+
 export function parseAllowedOrigins(value: string | undefined): Set<string> {
   return new Set(
     (value ?? "").split(",").map((origin) => origin.trim()).filter(Boolean),
@@ -484,14 +521,10 @@ async function handleRequest(request: Request): Promise<Response> {
       allowedOrigins,
     );
   }
-  const blockedProfileIds = new Set<string>([
-    ...(blockedBySenderResult.data ?? []).map((row) =>
-      (row as unknown as { blocked_profile_id: string }).blocked_profile_id
-    ),
-    ...(blockedSenderResult.data ?? []).map((row) =>
-      (row as unknown as { blocker_profile_id: string }).blocker_profile_id
-    ),
-  ]);
+  const blockedProfileIds = collectBlockedProfileIds(
+    (blockedBySenderResult.data ?? []) as unknown as { blocked_profile_id: string }[],
+    (blockedSenderResult.data ?? []) as unknown as { blocker_profile_id: string }[],
+  );
 
   const { data: candidateData, error: candidateError } = await admin.database
     .from("profiles")
@@ -530,10 +563,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }).sort(compareRankedProfiles).slice(0, validatedInput.value.limit);
 
   const resultIds = ranked.map((match) => match.profile.id);
-  const connectionStatuses = new Map<
-    string,
-    "outgoing_pending" | "incoming_pending" | "accepted"
-  >();
+  let connectionStatuses = new Map<string, ConnectionStatus>();
 
   if (resultIds.length > 0) {
     const [outgoingResult, incomingResult] = await Promise.all([
@@ -552,33 +582,16 @@ async function handleRequest(request: Request): Promise<Response> {
       );
     }
 
-    for (
-      const connection of (outgoingResult.data ?? []) as unknown as {
+    connectionStatuses = buildConnectionStatuses(
+      (outgoingResult.data ?? []) as unknown as {
         recipient_id: string;
         status: "pending" | "accepted" | "declined";
-      }[]
-    ) {
-      if (connection.status === "accepted") {
-        connectionStatuses.set(connection.recipient_id, "accepted");
-      } else if (connection.status === "pending") {
-        connectionStatuses.set(connection.recipient_id, "outgoing_pending");
-      }
-    }
-    for (
-      const connection of (incomingResult.data ?? []) as unknown as {
+      }[],
+      (incomingResult.data ?? []) as unknown as {
         sender_id: string;
         status: "pending" | "accepted" | "declined";
-      }[]
-    ) {
-      if (connection.status === "accepted") {
-        connectionStatuses.set(connection.sender_id, "accepted");
-      } else if (
-        connection.status === "pending" &&
-        connectionStatuses.get(connection.sender_id) !== "accepted"
-      ) {
-        connectionStatuses.set(connection.sender_id, "incoming_pending");
-      }
-    }
+      }[],
+    );
   }
 
   const results = ranked.map(({ profile, distanceKm, matchReason }) => ({
