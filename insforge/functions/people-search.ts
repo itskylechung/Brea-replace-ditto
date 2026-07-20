@@ -357,6 +357,17 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+// Mirror the coded `code` into the SDK-standard `error` key so @insforge/sdk's
+// parseResponse surfaces the real code/message instead of a generic fallback.
+function errorResponse(
+  error: ApiError,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
+  return jsonResponse({ ...error, error: error.code }, status, origin, allowedOrigins);
+}
+
 function isValidCoordinate(latitude: unknown, longitude: unknown): latitude is number {
   return typeof latitude === "number" && Number.isFinite(latitude) && latitude >= -90 &&
     latitude <= 90 && typeof longitude === "number" && Number.isFinite(longitude) &&
@@ -395,7 +406,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
 
   if (origin && !allowedOrigins.has(origin)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." },
       403,
       origin,
@@ -408,7 +419,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   if (request.method !== "POST") {
-    return jsonResponse(
+    return errorResponse(
       { code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." },
       405,
       origin,
@@ -420,7 +431,7 @@ async function handleRequest(request: Request): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
       400,
       origin,
@@ -430,17 +441,17 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const validatedInput = validateSearchInput(body);
   if (!validatedInput.ok) {
-    return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
+    return errorResponse(validatedInput.error, 400, origin, allowedOrigins);
   }
 
   const config = configuration();
   if (!config.ok) {
-    return jsonResponse(config.error, 503, origin, allowedOrigins);
+    return errorResponse(config.error, 503, origin, allowedOrigins);
   }
 
   const accessToken = bearerToken(request.headers);
   if (!accessToken) {
-    return jsonResponse(
+    return errorResponse(
       { code: "AUTH_REQUIRED", message: "Sign in to search for nearby people." },
       401,
       origin,
@@ -451,7 +462,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
   const { data: currentUserData, error: currentUserError } = await authClient.auth.getCurrentUser();
   if (currentUserError || !currentUserData?.user) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
       401,
       origin,
@@ -471,7 +482,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .maybeSingle();
 
   if (senderError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
       500,
       origin,
@@ -488,7 +499,7 @@ async function handleRequest(request: Request): Promise<Response> {
     }
     | null;
   if (!sender || !sender.onboarding_completed) {
-    return jsonResponse(
+    return errorResponse(
       { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile before searching." },
       409,
       origin,
@@ -497,7 +508,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   if (!isValidCoordinate(sender.latitude, sender.longitude)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "PROFILE_SETUP_REQUIRED", message: "Add your location before searching." },
       409,
       origin,
@@ -514,7 +525,7 @@ async function handleRequest(request: Request): Promise<Response> {
       .eq("blocked_profile_id", sender.id),
   ]);
   if (blockedBySenderResult.error || blockedSenderResult.error) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
       500,
       origin,
@@ -537,7 +548,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .eq("is_available", true);
 
   if (candidateError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
       500,
       origin,
@@ -574,7 +585,7 @@ async function handleRequest(request: Request): Promise<Response> {
     ]);
 
     if (outgoingResult.error || incomingResult.error) {
-      return jsonResponse(
+      return errorResponse(
         { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
         500,
         origin,
@@ -629,7 +640,7 @@ export async function handler(request: Request): Promise<Response> {
     allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
     return await handleRequest(request);
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Nearby search is temporarily unavailable." },
       500,
       origin,

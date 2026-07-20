@@ -70,11 +70,22 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+// Mirror the coded `code` into the SDK-standard `error` key so @insforge/sdk's
+// parseResponse surfaces the real code/message instead of a generic fallback.
+function errorResponse(
+  error: ApiError,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
+  return jsonResponse({ ...error, error: error.code }, status, origin, allowedOrigins);
+}
+
 async function handleRequest(request: Request): Promise<Response> {
   const origin = request.headers.get("Origin");
   const allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
   if (origin && !allowedOrigins.has(origin)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." },
       403,
       origin,
@@ -85,7 +96,7 @@ async function handleRequest(request: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: corsHeaders(origin, allowedOrigins) });
   }
   if (request.method !== "POST") {
-    return jsonResponse(
+    return errorResponse(
       { code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." },
       405,
       origin,
@@ -97,7 +108,7 @@ async function handleRequest(request: Request): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
       400,
       origin,
@@ -105,14 +116,14 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
   const input = validateEventInput(body);
-  if (!input.ok) return jsonResponse(input.error, 400, origin, allowedOrigins);
+  if (!input.ok) return errorResponse(input.error, 400, origin, allowedOrigins);
 
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")?.trim();
   const apiKey = Deno.env.get("API_KEY")?.trim();
   const accessToken = request.headers.get("Authorization")?.trim().match(/^Bearer\s+(.+)$/i)?.[1]
     ?.trim();
   if (!baseUrl || !apiKey) {
-    return jsonResponse(
+    return errorResponse(
       { code: "SERVICE_UNAVAILABLE", message: "Analytics is unavailable." },
       503,
       origin,
@@ -120,7 +131,7 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
   if (!accessToken) {
-    return jsonResponse(
+    return errorResponse(
       { code: "AUTH_REQUIRED", message: "Sign in first." },
       401,
       origin,
@@ -131,7 +142,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const authClient = createClient({ baseUrl, accessToken });
   const { data: userData, error: userError } = await authClient.auth.getCurrentUser();
   if (userError || !userData?.user) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_SESSION", message: "Your session has expired." },
       401,
       origin,
@@ -149,7 +160,7 @@ async function handleRequest(request: Request): Promise<Response> {
     properties: input.value.properties,
   }]);
   if (error) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Analytics is unavailable." },
       500,
       origin,
@@ -166,7 +177,7 @@ export async function handler(request: Request): Promise<Response> {
     allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
     return await handleRequest(request);
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "Analytics is unavailable." },
       500,
       origin,

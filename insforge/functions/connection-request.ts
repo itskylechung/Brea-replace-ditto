@@ -111,6 +111,17 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+// Mirror the coded `code` into the SDK-standard `error` key so @insforge/sdk's
+// parseResponse surfaces the real code/message instead of a generic fallback.
+function errorResponse(
+  error: ApiError,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
+  return jsonResponse({ ...error, error: error.code }, status, origin, allowedOrigins);
+}
+
 function configuration(): ValidationResult<{
   baseUrl: string;
   apiKey: string;
@@ -210,7 +221,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
 
   if (origin && !allowedOrigins.has(origin)) {
-    return jsonResponse(
+    return errorResponse(
       { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." },
       403,
       origin,
@@ -223,7 +234,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   if (request.method !== "POST") {
-    return jsonResponse(
+    return errorResponse(
       { code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." },
       405,
       origin,
@@ -235,7 +246,7 @@ async function handleRequest(request: Request): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
       400,
       origin,
@@ -245,17 +256,17 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const validatedInput = validateConnectionInput(body);
   if (!validatedInput.ok) {
-    return jsonResponse(validatedInput.error, 400, origin, allowedOrigins);
+    return errorResponse(validatedInput.error, 400, origin, allowedOrigins);
   }
 
   const config = configuration();
   if (!config.ok) {
-    return jsonResponse(config.error, 503, origin, allowedOrigins);
+    return errorResponse(config.error, 503, origin, allowedOrigins);
   }
 
   const accessToken = bearerToken(request.headers);
   if (!accessToken) {
-    return jsonResponse(
+    return errorResponse(
       { code: "AUTH_REQUIRED", message: "Sign in to send a connection request." },
       401,
       origin,
@@ -266,7 +277,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
   const { data: currentUserData, error: currentUserError } = await authClient.auth.getCurrentUser();
   if (currentUserError || !currentUserData?.user) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
       401,
       origin,
@@ -286,7 +297,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .maybeSingle();
 
   if (senderError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
       500,
       origin,
@@ -296,7 +307,7 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const sender = senderData as { id: string; onboarding_completed: boolean } | null;
   if (!sender || !sender.onboarding_completed) {
-    return jsonResponse(
+    return errorResponse(
       { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile before connecting." },
       409,
       origin,
@@ -305,7 +316,7 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   if (validatedInput.value.recipientId === sender.id) {
-    return jsonResponse(
+    return errorResponse(
       { code: "SELF_CONNECTION", message: "You cannot connect with yourself." },
       400,
       origin,
@@ -320,7 +331,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .maybeSingle();
 
   if (profileError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
       500,
       origin,
@@ -337,12 +348,12 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const availabilityError = recipientAvailabilityError(recipient);
   if (availabilityError) {
-    return jsonResponse(availabilityError.error, availabilityError.status, origin, allowedOrigins);
+    return errorResponse(availabilityError.error, availabilityError.status, origin, allowedOrigins);
   }
   // recipientAvailabilityError already returns 404 for a missing recipient; this
   // guard re-narrows the type to non-null for the remainder of the handler.
   if (!recipient) {
-    return jsonResponse(
+    return errorResponse(
       { code: "RECIPIENT_NOT_FOUND", message: "The selected profile was not found." },
       404,
       origin,
@@ -361,7 +372,7 @@ async function handleRequest(request: Request): Promise<Response> {
       .maybeSingle(),
   ]);
   if (blockedBySenderResult.error || blockedSenderResult.error) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
       500,
       origin,
@@ -369,7 +380,7 @@ async function handleRequest(request: Request): Promise<Response> {
     );
   }
   if (blockedBySenderResult.data || blockedSenderResult.data) {
-    return jsonResponse(
+    return errorResponse(
       { code: "RECIPIENT_UNAVAILABLE", message: "The selected profile is unavailable." },
       409,
       origin,
@@ -384,7 +395,7 @@ async function handleRequest(request: Request): Promise<Response> {
     .eq("recipient_id", sender.id)
     .maybeSingle();
   if (reverseError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
       500,
       origin,
@@ -397,7 +408,7 @@ async function handleRequest(request: Request): Promise<Response> {
   } | null;
   const reverseConflict = reverseConnectionConflict(reverseConnection);
   if (reverseConflict) {
-    return jsonResponse(reverseConflict, 409, origin, allowedOrigins);
+    return errorResponse(reverseConflict, 409, origin, allowedOrigins);
   }
 
   const selectConnection = () =>
@@ -410,7 +421,7 @@ async function handleRequest(request: Request): Promise<Response> {
 
   const { data: existingData, error: existingError } = await selectConnection();
   if (existingError) {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
       500,
       origin,
@@ -440,7 +451,7 @@ async function handleRequest(request: Request): Promise<Response> {
           allowedOrigins,
         );
       }
-      return jsonResponse(
+      return errorResponse(
         { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
         500,
         origin,
@@ -489,7 +500,7 @@ async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
-  return jsonResponse(
+  return errorResponse(
     { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
     500,
     origin,
@@ -505,7 +516,7 @@ export async function handler(request: Request): Promise<Response> {
     allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
     return await handleRequest(request);
   } catch {
-    return jsonResponse(
+    return errorResponse(
       { code: "INTERNAL_ERROR", message: "The connection request could not be completed." },
       500,
       origin,
