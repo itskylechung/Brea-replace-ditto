@@ -20,3 +20,5 @@ dist
 .trae
 .windsurf
 .vercel
+.DS_Store
+.playwright-mcp/

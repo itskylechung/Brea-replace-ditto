@@ -1,5 +1,7 @@
 import {
   bearerToken,
+  buildConnectionStatuses,
+  collectBlockedProfileIds,
   compareRankedProfiles,
   handler,
   haversineKm,
@@ -167,6 +169,7 @@ Deno.test("handler returns structured invalid-request errors with CORS", async (
     assertEquals(await response.json(), {
       code: "INVALID_REQUEST",
       message: "Request body must contain valid JSON.",
+      error: "INVALID_REQUEST",
     });
     assertEquals(response.headers.get("Access-Control-Allow-Origin"), "https://brea.example");
     assertEquals(response.headers.get("Vary"), "Origin");
@@ -174,4 +177,58 @@ Deno.test("handler returns structured invalid-request errors with CORS", async (
     if (previous === undefined) Deno.env.delete("BREA_ALLOWED_ORIGINS");
     else Deno.env.set("BREA_ALLOWED_ORIGINS", previous);
   }
+});
+
+Deno.test("collectBlockedProfileIds excludes profiles blocked by and blocking the searcher", () => {
+  const blocked = collectBlockedProfileIds(
+    // Profiles the searcher has blocked.
+    [{ blocked_profile_id: "blocked-by-me-1" }, { blocked_profile_id: "blocked-by-me-2" }],
+    // Profiles that have blocked the searcher.
+    [{ blocker_profile_id: "blocking-me" }],
+  );
+
+  assert(blocked.has("blocked-by-me-1"));
+  assert(blocked.has("blocked-by-me-2"));
+  assert(blocked.has("blocking-me"));
+  assertEquals(blocked.size, 3);
+
+  // The handler drops any candidate whose id is in the blocked set (either direction).
+  const candidates = [
+    { id: "blocked-by-me-1" },
+    { id: "blocking-me" },
+    { id: "reachable" },
+  ];
+  const visible = candidates.filter((candidate) => !blocked.has(candidate.id)).map((c) => c.id);
+  assertEquals(visible, ["reachable"]);
+});
+
+Deno.test("buildConnectionStatuses maps outgoing, incoming, and accepted relationships", () => {
+  const statuses = buildConnectionStatuses(
+    [
+      { recipient_id: "outgoing-pending", status: "pending" },
+      { recipient_id: "outgoing-accepted", status: "accepted" },
+      { recipient_id: "outgoing-declined", status: "declined" },
+    ],
+    [
+      { sender_id: "incoming-pending", status: "pending" },
+      { sender_id: "incoming-accepted", status: "accepted" },
+    ],
+  );
+
+  assertEquals(statuses.get("outgoing-pending"), "outgoing_pending");
+  assertEquals(statuses.get("incoming-pending"), "incoming_pending");
+  assertEquals(statuses.get("outgoing-accepted"), "accepted");
+  assertEquals(statuses.get("incoming-accepted"), "accepted");
+  // Declined rows are not surfaced...
+  assertEquals(statuses.get("outgoing-declined"), undefined);
+  // ...and the handler renders an absent entry as "none".
+  assertEquals(statuses.get("stranger") ?? "none", "none");
+});
+
+Deno.test("buildConnectionStatuses keeps an accepted status ahead of an incoming pending row", () => {
+  const statuses = buildConnectionStatuses(
+    [{ recipient_id: "friend", status: "accepted" }],
+    [{ sender_id: "friend", status: "pending" }],
+  );
+  assertEquals(statuses.get("friend"), "accepted");
 });

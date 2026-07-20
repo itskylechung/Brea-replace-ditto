@@ -6,7 +6,7 @@ type ApiError = { code: string; message: string };
 type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: ApiError };
 export type ResponseInput = { connectionId: string; action: "accept" | "decline" };
 
-type ConnectionRow = {
+export type ConnectionRow = {
   id: string;
   sender_id: string;
   recipient_id: string;
@@ -16,16 +16,68 @@ type ConnectionRow = {
 
 export function validateResponseInput(value: unknown): ValidationResult<ResponseInput> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { ok: false, error: { code: "INVALID_REQUEST", message: "Request body must be a JSON object." } };
+    return {
+      ok: false,
+      error: { code: "INVALID_REQUEST", message: "Request body must be a JSON object." },
+    };
   }
   const body = value as Record<string, unknown>;
   if (typeof body.connectionId !== "string" || !UUID_PATTERN.test(body.connectionId)) {
-    return { ok: false, error: { code: "INVALID_REQUEST", message: "connectionId must be a valid UUID." } };
+    return {
+      ok: false,
+      error: { code: "INVALID_REQUEST", message: "connectionId must be a valid UUID." },
+    };
   }
   if (body.action !== "accept" && body.action !== "decline") {
-    return { ok: false, error: { code: "INVALID_REQUEST", message: "action must be accept or decline." } };
+    return {
+      ok: false,
+      error: { code: "INVALID_REQUEST", message: "action must be accept or decline." },
+    };
   }
   return { ok: true, value: { connectionId: body.connectionId, action: body.action } };
+}
+
+export function respondedResponse(
+  row: { id: string; status: "pending" | "accepted" | "declined"; responded_at: string | null },
+): { id: string; status: "pending" | "accepted" | "declined"; respondedAt: string | null } {
+  return { id: row.id, status: row.status, respondedAt: row.responded_at };
+}
+
+export type ResponsePlan =
+  | { kind: "error"; error: ApiError; status: number }
+  | {
+    kind: "noop";
+    body: { id: string; status: "pending" | "accepted" | "declined"; respondedAt: string | null };
+  }
+  | { kind: "apply"; id: string; nextStatus: "accepted" | "declined" };
+
+export function planConnectionResponse(
+  connection: ConnectionRow | null,
+  profileId: string,
+  action: "accept" | "decline",
+): ResponsePlan {
+  if (!connection || connection.recipient_id !== profileId) {
+    return {
+      kind: "error",
+      status: 404,
+      error: { code: "REQUEST_NOT_FOUND", message: "This request was not found." },
+    };
+  }
+  const nextStatus = action === "accept" ? "accepted" : "declined";
+  if (connection.status === nextStatus) {
+    return { kind: "noop", body: respondedResponse(connection) };
+  }
+  if (connection.status !== "pending") {
+    return {
+      kind: "error",
+      status: 409,
+      error: {
+        code: "REQUEST_ALREADY_RESOLVED",
+        message: "This request has already been resolved.",
+      },
+    };
+  }
+  return { kind: "apply", id: connection.id, nextStatus };
 }
 
 export function parseAllowedOrigins(value: string | undefined): Set<string> {
@@ -48,17 +100,36 @@ function corsHeaders(origin: string | null, allowedOrigins: Set<string>): Header
   return headers;
 }
 
-function jsonResponse(body: unknown, status: number, origin: string | null, allowedOrigins: Set<string>): Response {
+function jsonResponse(
+  body: unknown,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
   const headers = corsHeaders(origin, allowedOrigins);
   headers.set("Content-Type", "application/json; charset=utf-8");
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+// Mirror the coded `code` into the SDK-standard `error` key so @insforge/sdk's
+// parseResponse surfaces the real code/message instead of a generic fallback.
+function errorResponse(
+  error: ApiError,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
+  return jsonResponse({ ...error, error: error.code }, status, origin, allowedOrigins);
 }
 
 function configuration(): ValidationResult<{ baseUrl: string; apiKey: string }> {
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")?.trim();
   const apiKey = Deno.env.get("API_KEY")?.trim();
   if (!baseUrl || !apiKey) {
-    return { ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "This request cannot be updated right now." } };
+    return {
+      ok: false,
+      error: { code: "SERVICE_UNAVAILABLE", message: "This request cannot be updated right now." },
+    };
   }
   return { ok: true, value: { baseUrl, apiKey } };
 }
@@ -79,40 +150,72 @@ async function handleRequest(request: Request): Promise<Response> {
   const origin = request.headers.get("Origin");
   const allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
   if (origin && !allowedOrigins.has(origin)) {
-    return jsonResponse({ code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." }, 403, origin, allowedOrigins);
+    return errorResponse(
+      { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." },
+      403,
+      origin,
+      allowedOrigins,
+    );
   }
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin, allowedOrigins) });
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(origin, allowedOrigins) });
+  }
   if (request.method !== "POST") {
-    return jsonResponse({ code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." }, 405, origin, allowedOrigins);
+    return errorResponse(
+      { code: "METHOD_NOT_ALLOWED", message: "Only POST requests are supported." },
+      405,
+      origin,
+      allowedOrigins,
+    );
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return jsonResponse({ code: "INVALID_REQUEST", message: "Request body must contain valid JSON." }, 400, origin, allowedOrigins);
+    return errorResponse(
+      { code: "INVALID_REQUEST", message: "Request body must contain valid JSON." },
+      400,
+      origin,
+      allowedOrigins,
+    );
   }
   const input = validateResponseInput(body);
-  if (!input.ok) return jsonResponse(input.error, 400, origin, allowedOrigins);
+  if (!input.ok) return errorResponse(input.error, 400, origin, allowedOrigins);
 
   const config = configuration();
-  if (!config.ok) return jsonResponse(config.error, 503, origin, allowedOrigins);
+  if (!config.ok) return errorResponse(config.error, 503, origin, allowedOrigins);
   const accessToken = bearerToken(request.headers);
   if (!accessToken) {
-    return jsonResponse({ code: "AUTH_REQUIRED", message: "Sign in to respond to this request." }, 401, origin, allowedOrigins);
+    return errorResponse(
+      { code: "AUTH_REQUIRED", message: "Sign in to respond to this request." },
+      401,
+      origin,
+      allowedOrigins,
+    );
   }
 
   const authClient = createClient({ baseUrl: config.value.baseUrl, accessToken });
   const { data: userData, error: userError } = await authClient.auth.getCurrentUser();
   if (userError || !userData?.user) {
-    return jsonResponse({ code: "INVALID_SESSION", message: "Your session has expired. Sign in again." }, 401, origin, allowedOrigins);
+    return errorResponse(
+      { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." },
+      401,
+      origin,
+      allowedOrigins,
+    );
   }
 
   const admin = createAdminClient({ baseUrl: config.value.baseUrl, apiKey: config.value.apiKey });
   const { data: profileData, error: profileError } = await admin.database
     .from("profiles").select("id").eq("user_id", userData.user.id).maybeSingle();
   if (profileError || !profileData) {
-    return jsonResponse({ code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile first." }, 409, origin, allowedOrigins);
+    return errorResponse(
+      { code: "PROFILE_SETUP_REQUIRED", message: "Complete your Brea profile first." },
+      409,
+      origin,
+      allowedOrigins,
+    );
   }
   const profileId = (profileData as { id: string }).id;
 
@@ -122,36 +225,50 @@ async function handleRequest(request: Request): Promise<Response> {
     .eq("id", input.value.connectionId)
     .maybeSingle();
   if (connectionError) {
-    return jsonResponse({ code: "INTERNAL_ERROR", message: "This request cannot be updated right now." }, 500, origin, allowedOrigins);
+    return errorResponse(
+      { code: "INTERNAL_ERROR", message: "This request cannot be updated right now." },
+      500,
+      origin,
+      allowedOrigins,
+    );
   }
   const connection = connectionData as unknown as ConnectionRow | null;
-  if (!connection || connection.recipient_id !== profileId) {
-    return jsonResponse({ code: "REQUEST_NOT_FOUND", message: "This request was not found." }, 404, origin, allowedOrigins);
+  const plan = planConnectionResponse(connection, profileId, input.value.action);
+  if (plan.kind === "error") {
+    return errorResponse(plan.error, plan.status, origin, allowedOrigins);
+  }
+  if (plan.kind === "noop") {
+    return jsonResponse(plan.body, 200, origin, allowedOrigins);
   }
 
-  const nextStatus = input.value.action === "accept" ? "accepted" : "declined";
-  if (connection.status === nextStatus) {
-    return jsonResponse({ id: connection.id, status: connection.status, respondedAt: connection.responded_at }, 200, origin, allowedOrigins);
-  }
-  if (connection.status !== "pending") {
-    return jsonResponse({ code: "REQUEST_ALREADY_RESOLVED", message: "This request has already been resolved." }, 409, origin, allowedOrigins);
-  }
-
+  const nextStatus = plan.nextStatus;
   const respondedAt = new Date().toISOString();
   const { data: updatedData, error: updateError } = await admin.database
     .from("connections")
     .update({ status: nextStatus, responded_at: respondedAt })
-    .eq("id", connection.id)
+    .eq("id", plan.id)
     .eq("status", "pending")
     .select("id, status, responded_at")
     .maybeSingle();
   if (updateError || !updatedData) {
-    return jsonResponse({ code: "REQUEST_ALREADY_RESOLVED", message: "This request was changed elsewhere. Refresh and try again." }, 409, origin, allowedOrigins);
+    return errorResponse(
+      {
+        code: "REQUEST_ALREADY_RESOLVED",
+        message: "This request was changed elsewhere. Refresh and try again.",
+      },
+      409,
+      origin,
+      allowedOrigins,
+    );
   }
 
   void recordEvent(admin, profileId, nextStatus);
-  const updated = updatedData as unknown as { id: string; status: string; responded_at: string };
-  return jsonResponse({ id: updated.id, status: updated.status, respondedAt: updated.responded_at }, 200, origin, allowedOrigins);
+  const updated = updatedData as unknown as {
+    id: string;
+    status: "pending" | "accepted" | "declined";
+    responded_at: string | null;
+  };
+  return jsonResponse(respondedResponse(updated), 200, origin, allowedOrigins);
 }
 
 export async function handler(request: Request): Promise<Response> {
@@ -161,7 +278,12 @@ export async function handler(request: Request): Promise<Response> {
     allowedOrigins = parseAllowedOrigins(Deno.env.get("BREA_ALLOWED_ORIGINS"));
     return await handleRequest(request);
   } catch {
-    return jsonResponse({ code: "INTERNAL_ERROR", message: "This request cannot be updated right now." }, 500, origin, allowedOrigins);
+    return errorResponse(
+      { code: "INTERNAL_ERROR", message: "This request cannot be updated right now." },
+      500,
+      origin,
+      allowedOrigins,
+    );
   }
 }
 

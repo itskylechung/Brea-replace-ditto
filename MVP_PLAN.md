@@ -1,19 +1,44 @@
 # Brea Two-Hour MVP Execution Plan
 
+> **⚠️ Historical plan — superseded by the authenticated release (2026-07).**
+> This document is the original two-hour delivery plan for the **anonymous** MVP: a visitor searched
+> from a fixed server-side demo profile (`BREA_MVP_PROFILE_ID`) and login, per-user profiles, browser
+> geolocation, connection acceptance, and safety were out of scope. The product later **pivoted to an
+> authenticated model** and shipped it (live at <https://brea-replace-ditto.vercel.app>). It is kept
+> intact for history; the ticket structure, dependency map, and timeline still show how the work was
+> sequenced. For the contract that is actually shipped, read **`PRD.md` (v2.0)** — it is the source of
+> truth. Statements below that the pivot invalidated are annotated **_Superseded (2026-07)_** inline.
+
 ## Locked Decisions
 
-- Product core: **find suitable people nearby**.
+The following were the decisions locked at the start of the two-hour timebox. Those still true are
+unmarked; those the authenticated pivot changed carry an inline superseded note.
+
+- Product core: **find suitable people nearby**. _(Still true.)_
 - Primary flow: natural-language search → nearby ranked profiles → match reason → connection request.
-- Frontend: React, TypeScript, Vite, Tailwind CSS v3.4, and `@insforge/sdk`.
-- Frontend hosting: Vercel static deployment with Git integration.
-- Backend: InsForge Postgres and Deno Edge Functions.
-- Function slugs: `people-search` and `connection-request`.
-- Data boundary: frontend invokes Functions only; it cannot directly read or write base tables.
-- MVP identity: `BREA_MVP_PROFILE_ID` is a server-side InsForge Function secret. Login UI is out of scope.
-- Location: stored and evaluated in InsForge; raw coordinates never reach the browser.
-- Search: deterministic relevance ranking plus a real radius filter. Do not claim that an AI model is running.
-- Connection retries are idempotent and backed by a database unique constraint.
-- Preview and Production Vercel deployments use separate InsForge targets.
+  — **_Superseded (2026-07):_** the flow now begins with LinkedIn sign-in and first-run onboarding, and
+  extends past the request into an accept/decline inbox.
+- Frontend: React, TypeScript, Vite, Tailwind CSS v3.4, and `@insforge/sdk`. _(Still true.)_
+- Frontend hosting: Vercel static deployment with Git integration. — **_Superseded (2026-07):_** the
+  live site is deployed from local `vite build` output (no Git auto-deploy is wired yet).
+- Backend: InsForge Postgres and Deno Edge Functions. _(Still true.)_
+- Function slugs: `people-search` and `connection-request`. — **_Superseded (2026-07):_** six Functions
+  ship — add `connection-inbox`, `connection-respond`, `profile-safety`, and `track-event`.
+- Data boundary: frontend invokes Functions only; it cannot directly read or write base tables. —
+  **_Superseded (2026-07):_** members now read/write **their own** `profiles` row directly under RLS;
+  all other tables remain Functions-only.
+- MVP identity: `BREA_MVP_PROFILE_ID` is a server-side InsForge Function secret. Login UI is out of
+  scope. — **_Superseded (2026-07):_** **LinkedIn OAuth sign-in is required** and each member has their
+  own per-user profile resolved from their session. `BREA_MVP_PROFILE_ID` is retired and read by no
+  deployed Function.
+- Location: stored and evaluated in InsForge; raw coordinates never reach the browser. _(Still true —
+  and members now provide their own origin via browser geolocation during onboarding.)_
+- Search: deterministic relevance ranking plus a real radius filter. Do not claim that an AI model is
+  running. _(Still true; radius is now member-adjustable 1–50 km, default 10 km, rather than fixed.)_
+- Connection retries are idempotent and backed by a database unique constraint. _(Still true; the
+  lifecycle also adds accept/decline and re-request-after-decline.)_
+- Preview and Production Vercel deployments use separate InsForge targets. _(Still the intent; the live
+  site currently runs on the Preview backend until a dedicated Production project is created.)_
 
 ## Ticket Format
 
@@ -79,18 +104,29 @@ flowchart LR
 - Estimate: 10 minutes
 - Dependencies: Vercel and InsForge access available
 
+> **_Superseded (2026-07)._** This ticket froze the anonymous contract. It was **re-frozen to the
+> authenticated model** in `PRD.md` v2.0 (GitHub issue #3). The original criteria are kept for history;
+> superseded ones are marked below.
+
 Acceptance criteria:
 
-- [ ] Product core is recorded as “find suitable people nearby.”
-- [ ] Function slugs are frozen as `people-search` and `connection-request`.
-- [ ] Search, connection, and error JSON match `PRD.md`.
-- [ ] Radius is fixed at 10 km for the initial UI.
-- [ ] `BREA_MVP_PROFILE_ID` is confirmed as a server-side-only identity.
-- [ ] Duplicate connection behavior is idempotent with `created: false`.
-- [ ] Development, Preview, and Production InsForge targets are identified.
-- [ ] Vercel team/project, Git repository, and `main` production branch are confirmed.
-- [ ] Three successful example queries and one empty query are agreed.
-- [ ] Login, maps, chat, Share Marketplace, vector search, and production auth remain out of scope.
+- [x] Product core is recorded as “find suitable people nearby.” _(Still true.)_
+- [x] Function slugs are frozen as `people-search` and `connection-request`. — **_Superseded:_** six
+  Functions are frozen (see `PRD.md` §14).
+- [x] Search, connection, and error JSON match `PRD.md`. _(Re-frozen to `PRD.md` v2.0.)_
+- [x] Radius is fixed at 10 km for the initial UI. — **_Superseded:_** radius is member-adjustable
+  1–50 km, defaulting to 10 km.
+- [x] `BREA_MVP_PROFILE_ID` is confirmed as a server-side-only identity. — **_Superseded:_** replaced by
+  LinkedIn OAuth and per-user profiles; `BREA_MVP_PROFILE_ID` is retired.
+- [x] Duplicate connection behavior is idempotent with `created: false`. _(Still true.)_
+- [x] Development, Preview, and Production InsForge targets are identified. _(Live site runs on Preview;
+  a dedicated Production project is future work.)_
+- [x] Vercel team/project, Git repository, and `main` production branch are confirmed. _(Still true.)_
+- [x] Three successful example queries and one empty query are agreed. _(Still true.)_
+- [ ] Login, maps, chat, Share Marketplace, vector search, and production auth remain out of scope. —
+  **_Superseded:_** login (LinkedIn OAuth), per-user profiles, browser geolocation, an accept/decline
+  inbox, and block/report all **shipped**. Chat, notifications, maps, the Share Marketplace, and
+  vector search remain out of scope (see `PRD.md` §19).
 
 ## Frontend / PM-Design Tickets
 

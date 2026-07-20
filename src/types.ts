@@ -103,4 +103,5 @@ export type ConnectionUiState =
   | { status: "pending"; created: boolean }
   | { status: "incoming" }
   | { status: "accepted" }
+  | { status: "unavailable" }
   | { status: "error"; message: string };
