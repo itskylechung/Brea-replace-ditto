@@ -34,6 +34,15 @@ function readableError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+function friendlyMessage(message: string | null): string | null {
+  if (message && message.includes("timed out")) {
+    return "The backend took too long to respond. Please retry.";
+  }
+  return message;
+}
+
+type ProfileStatus = "idle" | "loading" | "ready" | "error";
+
 function trackOnce(eventName: "sign_in_completed") {
   try {
     if (window.sessionStorage.getItem(SIGN_IN_TRACKED_KEY)) return;
@@ -48,35 +57,75 @@ export function App() {
   const auth = useAuth();
   const [profile, setProfile] = useState<BreaProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [slowConnection, setSlowConnection] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     if (!auth.user) return;
 
+    const userId = auth.user.id;
     void ensureCurrentProfile(auth.user)
       .then((nextProfile) => {
-        if (!cancelled) {
-          setProfileError(null);
-          setProfile(nextProfile);
-          trackOnce("sign_in_completed");
+        if (cancelled) return;
+        // A profile whose owner differs from the signed-in user means the
+        // session and profile calls disagree; surface it as an error instead
+        // of leaving the app pending forever.
+        if (nextProfile.userId !== userId) {
+          setProfileError("We could not load your profile.");
+          return;
         }
+        setProfileError(null);
+        setProfile(nextProfile);
+        trackOnce("sign_in_completed");
       })
       .catch((error: unknown) => {
-        if (!cancelled) setProfileError(readableError(error, "We could not load your profile."));
+        if (cancelled) return;
+        setProfileError(readableError(error, "We could not load your profile."));
       });
     return () => {
       cancelled = true;
     };
   }, [auth.user]);
 
-  const profilePending = Boolean(auth.user && !profileError && profile?.userId !== auth.user.id);
+  const profileStatus: ProfileStatus = !auth.user
+    ? "idle"
+    : profileError
+      ? "error"
+      : profile && profile.userId === auth.user.id
+        ? "ready"
+        : "loading";
 
-  if (auth.isLoading || profilePending) {
+  const isPreparing = auth.isLoading || profileStatus === "loading";
+
+  useEffect(() => {
+    if (!isPreparing) return;
+    const timer = window.setTimeout(() => setSlowConnection(true), 5_000);
+    return () => {
+      window.clearTimeout(timer);
+      setSlowConnection(false);
+    };
+  }, [isPreparing]);
+
+  if (isPreparing) {
     return (
       <div className="grid min-h-screen place-items-center bg-cream text-ink" role="status">
         <div className="text-center">
           <BreaMark />
           <p className="mt-5 text-sm text-steel">Preparing your private profile…</p>
+          {slowConnection && (
+            <div className="mt-5">
+              <p className="text-sm text-steel">
+                Still connecting — the backend is responding slowly…
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-3 rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-charcoal"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -86,20 +135,22 @@ export function App() {
     return (
       <SignInScreen
         linkedinEnabled={auth.linkedinEnabled}
-        backendError={auth.error}
+        configFailed={auth.configFailed}
+        backendError={friendlyMessage(auth.error)}
         onSignIn={auth.signInWithLinkedIn}
+        onRetry={auth.refresh}
       />
     );
   }
 
-  if (profileError || !profile) {
+  if (profileStatus === "error" || !profile) {
     return (
       <div className="grid min-h-screen place-items-center bg-cream px-5 text-center text-ink">
         <div className="max-w-lg rounded-xl border border-hairline-soft bg-canvas p-8 shadow-card">
           <BreaMark />
           <h1 className="mt-7 font-editorial text-3xl">Your profile could not be prepared</h1>
           <p className="mt-3 text-sm leading-6 text-signal">
-            {profileError ?? "No profile was returned."}
+            {friendlyMessage(profileError) ?? "No profile was returned."}
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <button

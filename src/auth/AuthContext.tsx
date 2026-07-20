@@ -14,6 +14,7 @@ type AuthContextValue = {
   user: UserSchema | null;
   isLoading: boolean;
   linkedinEnabled: boolean;
+  configFailed: boolean;
   error: string | null;
   signInWithLinkedIn: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -21,6 +22,8 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+const BOOTSTRAP_RETRY_DELAY_MS = 1_500;
 
 function messageFrom(error: unknown, fallback: string): string {
   if (error && typeof error === "object" && "message" in error) {
@@ -35,10 +38,15 @@ function isSignedOutError(error: unknown): boolean {
   return (error as { statusCode?: unknown }).statusCode === 401;
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserSchema | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [linkedinEnabled, setLinkedinEnabled] = useState(false);
+  const [configFailed, setConfigFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -52,17 +60,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const client = getInsforgeClient();
-      const [sessionResult, configResult] = await Promise.all([
-        client.auth.getCurrentUser(),
-        client.auth.getPublicAuthConfig(),
-      ]);
+      const bootstrap = () =>
+        Promise.all([client.auth.getCurrentUser(), client.auth.getPublicAuthConfig()]);
 
-      if (!configResult.error) {
-        setLinkedinEnabled(configResult.data?.oAuthProviders?.includes("linkedin") ?? false);
+      let [sessionResult, configResult] = await bootstrap();
+
+      // The backend can intermittently stall a request past its timeout. A
+      // non-401 session error or any config error is treated as transient, so
+      // retry both calls once before surfacing the outcome. A bare 401 is the
+      // normal signed-out path and needs no retry.
+      const shouldRetry =
+        (sessionResult.error && !isSignedOutError(sessionResult.error)) ||
+        Boolean(configResult.error);
+      if (shouldRetry) {
+        await wait(BOOTSTRAP_RETRY_DELAY_MS);
+        [sessionResult, configResult] = await bootstrap();
       }
 
-      // A visitor without a session gets a 401 from getCurrentUser; that is
-      // the normal signed-out state, not a failure to surface.
+      setConfigFailed(Boolean(configResult.error));
+      setLinkedinEnabled(
+        !configResult.error && (configResult.data?.oAuthProviders?.includes("linkedin") ?? false),
+      );
+
       if (sessionResult.error && !isSignedOutError(sessionResult.error)) {
         throw sessionResult.error;
       }
@@ -108,11 +127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     isLoading,
     linkedinEnabled,
+    configFailed,
     error,
     signInWithLinkedIn,
     signOut,
     refresh,
-  }), [error, isLoading, linkedinEnabled, refresh, signInWithLinkedIn, signOut, user]);
+  }), [configFailed, error, isLoading, linkedinEnabled, refresh, signInWithLinkedIn, signOut, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
