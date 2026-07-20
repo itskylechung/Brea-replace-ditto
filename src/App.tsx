@@ -11,6 +11,7 @@ import { SignInScreen } from "./components/SignInScreen";
 import { SunsetRadar } from "./components/SunsetRadar";
 import {
   blockProfile,
+  ConnectionRequestError,
   ensureCurrentProfile,
   reportProfile,
   searchNearbyPeople,
@@ -39,6 +40,23 @@ function friendlyMessage(message: string | null): string | null {
     return "The backend took too long to respond. Please retry.";
   }
   return message;
+}
+
+// The connection-request function returns 409s that a retry can never clear.
+// Map each to the card state that tells the user what to do instead; unknown
+// failures keep the existing retryable error treatment.
+function connectionErrorState(error: unknown): ConnectionUiState {
+  const code = error instanceof ConnectionRequestError ? error.code : undefined;
+  switch (code) {
+    case "INCOMING_REQUEST_EXISTS":
+      return { status: "incoming" };
+    case "ALREADY_CONNECTED":
+      return { status: "accepted" };
+    case "RECIPIENT_UNAVAILABLE":
+      return { status: "unavailable" };
+    default:
+      return { status: "error", message: readableError(error, "Request not sent.") };
+  }
 }
 
 type ProfileStatus = "idle" | "loading" | "ready" | "error";
@@ -289,15 +307,14 @@ function DiscoveryApp({
       });
       setConnectionStates((current) => ({
         ...current,
-        [person.id]: { status: "pending", created: response.created },
+        [person.id]: response.status === "accepted"
+          ? { status: "accepted" }
+          : { status: "pending", created: response.created },
       }));
     } catch (error) {
       setConnectionStates((current) => ({
         ...current,
-        [person.id]: {
-          status: "error",
-          message: readableError(error, "Request not sent."),
-        },
+        [person.id]: connectionErrorState(error),
       }));
     }
   }

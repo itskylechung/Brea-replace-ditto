@@ -49,6 +49,7 @@ export function PersonCard({
   const isSubmitting = connectionState.status === "submitting";
   const isIncoming = connectionState.status === "incoming";
   const isAccepted = connectionState.status === "accepted";
+  const isUnavailable = connectionState.status === "unavailable";
 
   async function hide() {
     setMenuOpen(false);
@@ -263,6 +264,10 @@ export function PersonCard({
           <div className="inline-flex min-h-10 w-full cursor-default items-center justify-center gap-2 rounded-lg border border-success/30 bg-[#edf7f1] px-5 text-sm font-medium text-success">
             <span aria-hidden="true">✓</span>
             Connected
+          </div>
+        ) : isUnavailable ? (
+          <div className="inline-flex min-h-10 w-full cursor-default items-center justify-center gap-2 rounded-lg border border-hairline-strong bg-surface px-5 text-sm font-medium text-steel">
+            Not accepting requests right now
           </div>
         ) : (
           <button

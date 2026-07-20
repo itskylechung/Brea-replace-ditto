@@ -219,6 +219,26 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+export class ConnectionRequestError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "ConnectionRequestError";
+    this.code = code;
+  }
+}
+
+// The functions gateway surfaces the backend's error code on the thrown
+// InsForgeError as either `code` or `error`; read both so callers can map
+// specific 409s (INCOMING_REQUEST_EXISTS, ALREADY_CONNECTED,
+// RECIPIENT_UNAVAILABLE) while unknown values fall back to a generic error.
+function connectionErrorCode(error: unknown): string | undefined {
+  if (!isRecord(error)) return undefined;
+  const candidate = error.code ?? error.error;
+  return typeof candidate === "string" ? candidate : undefined;
+}
+
 async function readCurrentProfile(userId: string): Promise<BreaProfile | null> {
   const { data, error } = await getInsforgeClient().database
     .from("profiles")
@@ -319,7 +339,10 @@ export async function sendConnectionRequest(input: {
   });
 
   if (error) {
-    throw new Error(errorMessage(error, "We could not send this request. Please try again."));
+    throw new ConnectionRequestError(
+      errorMessage(error, "We could not send this request. Please try again."),
+      connectionErrorCode(error),
+    );
   }
   return parseConnectionResponse(data);
 }
