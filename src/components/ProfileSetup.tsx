@@ -1,10 +1,8 @@
 import { useState } from "react";
 import type { BreaProfile, ProfileUpdateInput } from "../types";
 import { BreaMark } from "./BreaMark";
-
-function tagsFrom(value: string): string[] {
-  return [...new Set(value.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 20);
-}
+import { TagInput } from "./TagInput";
+import { INTEREST_SUGGESTIONS, SKILL_SUGGESTIONS } from "../lib/tagSuggestions";
 
 // Duplicated locally from PersonCard.tsx; consolidating the shared helper is out of scope.
 function initials(name: string): string {
@@ -34,8 +32,8 @@ export function ProfileSetup({
   const [name, setName] = useState(profile.name);
   const [headline, setHeadline] = useState(profile.headline ?? "");
   const [bio, setBio] = useState(profile.bio ?? "");
-  const [skills, setSkills] = useState(profile.skills.join(", "));
-  const [interests, setInterests] = useState(profile.interests.join(", "));
+  const [skills, setSkills] = useState<string[]>(profile.skills);
+  const [interests, setInterests] = useState<string[]>(profile.interests);
   const [availability, setAvailability] = useState(profile.availability ?? "");
   const [locationLabel, setLocationLabel] = useState(profile.locationLabel ?? "");
   const [linkedinProfileUrl, setLinkedinProfileUrl] = useState(profile.linkedinProfileUrl ?? "");
@@ -92,8 +90,8 @@ export function ProfileSetup({
         name: name.trim(),
         headline: headline.trim(),
         bio: bio.trim() || null,
-        skills: tagsFrom(skills),
-        interests: tagsFrom(interests),
+        skills: skills.slice(0, 20),
+        interests: interests.slice(0, 20),
         availability: availability.trim() || null,
         locationLabel: locationLabel.trim(),
         latitude,
@@ -171,14 +169,26 @@ export function ProfileSetup({
           <label className="text-sm font-bold sm:col-span-2">Short bio
             <textarea value={bio} onChange={(event) => setBio(event.target.value)} maxLength={1000} rows={3} className={fieldClass} />
           </label>
-          <label className="text-sm font-bold">Skills <span className="font-normal text-moss">(comma-separated)</span>
-            <span className={matchingChipClass}>Improves matching</span>
-            <input value={skills} onChange={(event) => setSkills(event.target.value)} placeholder="TypeScript, product strategy" className={fieldClass} />
-          </label>
-          <label className="text-sm font-bold">Interests <span className="font-normal text-moss">(comma-separated)</span>
-            <span className={matchingChipClass}>Improves matching</span>
-            <input value={interests} onChange={(event) => setInterests(event.target.value)} placeholder="Climate tech, cycling" className={fieldClass} />
-          </label>
+          <TagInput
+            id="skills"
+            label="Skills"
+            hint="(comma or Enter to add)"
+            value={skills}
+            onChange={setSkills}
+            suggestions={SKILL_SUGGESTIONS}
+            placeholder="TypeScript, product strategy"
+            labelChip={<span className={matchingChipClass}>Improves matching</span>}
+          />
+          <TagInput
+            id="interests"
+            label="Interests"
+            hint="(comma or Enter to add)"
+            value={interests}
+            onChange={setInterests}
+            suggestions={INTEREST_SUGGESTIONS}
+            placeholder="Climate tech, cycling"
+            labelChip={<span className={matchingChipClass}>Improves matching</span>}
+          />
           <label className="text-sm font-bold">Availability
             <span className={matchingChipClass}>Improves matching</span>
             <input value={availability} onChange={(event) => setAvailability(event.target.value)} maxLength={180} placeholder="Coffee on weekday afternoons" className={fieldClass} />
