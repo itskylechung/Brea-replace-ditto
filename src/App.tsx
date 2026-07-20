@@ -307,7 +307,9 @@ function DiscoveryApp({
       });
       setConnectionStates((current) => ({
         ...current,
-        [person.id]: { status: "pending", created: response.created },
+        [person.id]: response.status === "accepted"
+          ? { status: "accepted" }
+          : { status: "pending", created: response.created },
       }));
     } catch (error) {
       setConnectionStates((current) => ({
