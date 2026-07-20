@@ -1,6 +1,6 @@
 # Brea Web MVP
 
-Brea helps a signed-in member find suitable people nearby, understand why each result is relevant, and send a lightweight connection request.
+Brea helps a signed-in member find suitable people nearby, understand why each result is relevant, send a lightweight connection request, and manage incoming and outgoing requests from a Requests inbox.
 
 LinkedIn OAuth establishes the member's identity. Brea then creates one private application profile per InsForge auth user and asks the member to review it before publication. Search and connection actions go through authenticated Edge Functions; direct database access is constrained by grants and row-level security.
 
@@ -35,13 +35,16 @@ npm run preview
 
 ## Backend contract
 
-The frontend uses InsForge auth plus two active Functions through `@insforge/sdk`:
+The frontend uses InsForge auth (`signInWithOAuth("linkedin")` for OAuth/PKCE sign-in) plus six active Edge Functions through `@insforge/sdk`:
 
-- `signInWithOAuth("linkedin")` for OAuth/PKCE sign-in
-- `people-search` with `{ query, radiusKm, limit }`
-- `connection-request` with `{ recipientId, sourceQuery }`
+- `people-search` — `{ query, radiusKm, limit }` → ranked nearby profiles with match reason, rounded distance, and per-result connection status
+- `connection-request` — `{ recipientId, sourceQuery }` → send or re-request a connection (idempotent; typed 409 conflicts)
+- `connection-inbox` — `{}` → the member's incoming and outgoing requests
+- `connection-respond` — `{ connectionId, action }` → accept or decline an incoming request
+- `profile-safety` — `{ action, profileId, ... }` → hide (block) or report a profile
+- `track-event` — `{ eventName, properties }` → record a client product event
 
-Each Function verifies the caller's bearer token, resolves the sender through `profiles.user_id`, and never trusts a browser-supplied sender ID. Search uses exact coordinates server-side but returns only rounded distance. Function errors use `{ code, message }`.
+Members also read and write their own `profiles` row directly under row-level security; every other table is reachable only through these Functions. Each Function verifies the caller's bearer token, resolves the actor through `profiles.user_id`, and never trusts a browser-supplied identity. Search uses exact coordinates server-side but returns only rounded distance. Function errors use `{ code, message }`. See [PRD.md](./PRD.md) for the full request/response shapes and error codes.
 
 ## LinkedIn OAuth setup
 
@@ -71,11 +74,27 @@ vercel env pull .env.local --environment=development --yes
 
 The backend `BREA_ALLOWED_ORIGINS` allowlist must include the exact frontend URL. Prefer one stable Preview domain instead of adding every generated branch URL. Run `npm run build` before deploying. A feature branch should deploy as a Vercel Preview. Production must be rebuilt from `main` with a separate Production InsForge environment; do not promote a Preview artifact that embeds Preview `VITE_*` values.
 
+## Scope
+
+Shipped and in scope:
+
+- LinkedIn OAuth sign-in (required) with a per-user private profile and first-run onboarding (name, headline, bio, skills, interests, availability, general location, and a private geolocation origin).
+- Nearby natural-language search with an adjustable radius (1–50 km, default 10 km).
+- Connection lifecycle: send a request, accept or decline it in a **Requests inbox**, and re-request after a decline. A member's optional LinkedIn URL is exchanged only once a request is accepted.
+- Per-card hide (block) and report; product-event tracking.
+
+Out of scope (see [PRD.md](./PRD.md) §19 for the roadmap):
+
+- Chat or real-time messaging.
+- Notifications (email or push) — declining is silent, and there are no request/accept notifications.
+- The Share Marketplace, ratings/reviews, payments, and a moderation/admin console.
+- Semantic/vector search (ranking is deterministic keyword matching).
+
 ## Current limitations
 
 - LinkedIn credentials and allowed redirect URLs must be configured separately in each environment.
-- Members explicitly provide browser location during onboarding; exact coordinates are private.
-- LinkedIn's normal sign-in scope provides basic identity, not a complete résumé or arbitrary member data.
-- The flow ends at `Request sent`; inbox, chat, notifications, and recipient acceptance are out of scope.
+- Members explicitly provide browser location during onboarding; exact coordinates stay private.
+- LinkedIn's normal sign-in scope provides basic identity (name, email, photo), not a complete résumé or arbitrary member data.
+- The live site currently runs on the Preview InsForge backend; a dedicated Production project is future work.
 
-See [USER_FLOW.md](./USER_FLOW.md) for the experience states and [MVP_PLAN.md](./MVP_PLAN.md) for the two-hour delivery plan.
+See [PRD.md](./PRD.md) for the frozen product contract. [USER_FLOW.md](./USER_FLOW.md) and [MVP_PLAN.md](./MVP_PLAN.md) capture the original anonymous two-hour plan and are retained for history.
