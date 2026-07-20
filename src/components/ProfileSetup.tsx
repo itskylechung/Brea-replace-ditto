@@ -80,10 +80,6 @@ export function ProfileSetup({
       setError("Name, headline, and general location are required.");
       return;
     }
-    if (latitude === null || longitude === null) {
-      setError("Use your current location so Brea can calculate distance privately.");
-      return;
-    }
     const linkedInUrl = linkedinProfileUrl.trim();
     if (linkedInUrl && !/^https:\/\/(?:[a-z]{2}\.)?linkedin\.com\/in\/[A-Za-z0-9%_-]+\/?(?:\?.*)?$/.test(linkedInUrl)) {
       setError("Enter a valid LinkedIn profile URL, such as https://www.linkedin.com/in/your-name.");
@@ -198,7 +194,11 @@ export function ProfileSetup({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-bold">Private distance origin</p>
-                <p className="mt-1 text-xs leading-relaxed text-moss">Stored securely and used only to calculate approximate distance.</p>
+                <p className="mt-1 text-xs leading-relaxed text-moss">
+                  {latitude === null
+                    ? "Optional for now — without it you won't appear in discovery and can't search nearby. We'll ask again when you first search."
+                    : "Stored securely and used only to calculate approximate distance."}
+                </p>
               </div>
               <button type="button" onClick={useCurrentLocation} disabled={isLocating} className="rounded-full border border-forest/20 bg-white px-4 py-2 text-sm font-bold text-forest disabled:opacity-50">
                 {isLocating ? "Locating…" : latitude === null ? "Use current location" : "Location added ✓"}

@@ -15,6 +15,10 @@
 > **authenticated release** that is live at <https://brea-replace-ditto.vercel.app>. Where a
 > capability is not yet built, it appears only under [§19 Roadmap](#19-roadmap-not-yet-shipped).
 
+> **Amendments to this contract**
+>
+> - 2026-07-20 — FE-07 (#42): geolocation moved from onboarding requirement to first-search prompt.
+
 ## 1. Product Summary
 
 Brea helps a signed-in member find suitable people nearby through natural-language search. A member
@@ -69,9 +73,9 @@ meet someone relevant nearby without browsing a generic social feed.
 - **Per-user private profiles.** One private profile is provisioned per InsForge auth user on first
   sign-in and is hidden from discovery until the member completes onboarding and opts in.
 - **First-run onboarding.** Member reviews and edits name, headline, short bio, skills, interests,
-  availability, a general location label, an optional LinkedIn profile URL, and a private distance
-  origin captured from browser geolocation; and sets discovery controls (discoverable / open to new
-  connections).
+  availability, a general location label, an optional LinkedIn profile URL, and an optional private
+  distance origin from browser geolocation (requested before the first search if skipped here); and
+  sets discovery controls (discoverable / open to new connections).
 - **Profile editing.** The same form reopens later so members can edit details, refresh their
   private location, or pause visibility.
 - **Nearby natural-language search** for authenticated, onboarded members, with an adjustable radius
@@ -123,8 +127,10 @@ for stored reports and blocks.
   - Availability (optional, ≤180 chars).
   - General location label (required, ≤120 chars) — a coarse, human-readable place shown to others.
   - LinkedIn profile URL (optional; validated against `https://[cc.]linkedin.com/in/...`).
-  - **Private distance origin** — latitude/longitude captured with `navigator.geolocation`. Required
-    to save. Used only to compute approximate distance; the coordinates are never shown to anyone.
+  - **Private distance origin** — latitude/longitude captured with `navigator.geolocation`. Optional
+    at onboarding; Brea requests it before the first search, and it is required to appear in discovery
+    or to search nearby. Used only to compute approximate distance; the coordinates are never shown to
+    anyone.
   - Discovery controls: **Show me in discovery** (`isDiscoverable`) and **Open to new connections**
     (`isAvailable`), both defaulting on during onboarding.
 - Saving onboarding sets `onboarding_completed = true` and emits `profile_completed`.
@@ -135,7 +141,9 @@ for stored reports and blocks.
 ## 7. Discovery and Search
 
 - Search requires an authenticated session, a completed profile, and a stored location. Missing any
-  of these returns `PROFILE_SETUP_REQUIRED` (409).
+  of these returns `PROFILE_SETUP_REQUIRED` (409). Because location is optional at onboarding, the app
+  prompts for it inline on the first search when it is not yet set, then runs the search automatically
+  once it is saved.
 - The UI exposes a **radius slider** from 1 to 50 km, defaulting to **10 km**; the empty state offers
   a one-tap "Broaden to 25 km". (Radius is no longer fixed at 10 km as in v1.3.)
 - Example query chips populate and run the search:
@@ -309,11 +317,11 @@ Open Brea
    ↓
 Sign in with LinkedIn
    ↓
-First run: review profile, set location, choose discovery controls  → save
+First run: review profile, optionally add location, choose discovery controls  → save
    ↓
 Describe who you want to meet (or pick an example) and set a radius
    ↓
-Submit search → review ranked profiles, distance, and match reasons
+Submit search (add your location first if not set) → review ranked profiles, distance, and match reasons
    ↓
 Connect  ──────────────►  Request sent (pending)
    │                          ↓
@@ -330,7 +338,7 @@ Connect  ──────────────►  Request sent (pending)
 | --- | --- | --- |
 | AUTH-001 | LinkedIn sign-in | Discovery is unreachable until the member signs in with LinkedIn; provider-disabled state is explained, not silent. |
 | PROF-001 | Provisioned profile | A private, non-discoverable profile exists after first sign-in. |
-| PROF-002 | Onboarding | Name, headline, location label, and a geolocation origin are required to finish; discovery toggles are set; `profile_completed` fires. |
+| PROF-002 | Onboarding | Name, headline, and location label are required to finish; the geolocation origin is optional at onboarding and is requested before the first search; discovery toggles are set; `profile_completed` fires. |
 | PROF-003 | Editing | The member can edit the profile and pause visibility; `profile_updated` fires. |
 | SEARCH-001 | Nearby search | Search invokes `people-search` with `{ query, radiusKm, limit }`; radius is adjustable 1–50 km (default 10). |
 | SEARCH-002 | States | Distinct idle, loading, results, empty, and error states; duplicate in-flight searches prevented; query preserved on retry. |
@@ -422,7 +430,7 @@ re-rank or recompute distance.
 
 ## 18. Definition of Done (this release)
 
-- Members sign in with LinkedIn, complete onboarding with real geolocation, and become discoverable.
+- Members sign in with LinkedIn, complete onboarding, add their private geolocation (during onboarding or before their first search), and become discoverable.
 - Search returns backend-ranked nearby profiles with match reasons and rounded distance.
 - A request persists, is idempotent, re-opens after a decline, and returns the typed 409s in §8.1.
 - The Requests inbox lists incoming/outgoing requests and supports accept/decline; declines are silent.
