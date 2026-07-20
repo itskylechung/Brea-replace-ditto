@@ -122,7 +122,7 @@ export function ProfileSetup({
         <BreaMark />
         <div className="flex items-center gap-4">
           {mode === "editing" && onCancel && (
-            <button type="button" onClick={onCancel} className="text-sm font-bold text-moss hover:text-ink">Back to discovery</button>
+            <button type="button" onClick={onCancel} className="text-sm font-bold text-moss hover:text-ink">Back to your profile</button>
           )}
           <button type="button" onClick={() => void onSignOut()} className="text-sm font-bold text-moss hover:text-ink">Sign out</button>
         </div>
