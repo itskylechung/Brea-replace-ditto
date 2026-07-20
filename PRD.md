@@ -17,7 +17,7 @@
 
 > **Amendments to this contract**
 >
-> - 2026-07-20 — FE-07 (#42): geolocation moved from onboarding requirement to first-search prompt. Discovery defaults are location-gated; a member who defers location stays non-discoverable until they enable discovery after adding a location.
+> - 2026-07-20 — FE-07 (#42): geolocation moved from onboarding requirement to first-search prompt. Discovery defaults are location-gated; a member who defers location stays non-discoverable until they enable discovery after adding a location. The first-search flow offers a one-tap prompt to enable it (FE-13, #52).
 
 ## 1. Product Summary
 
