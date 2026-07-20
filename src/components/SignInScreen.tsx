@@ -3,12 +3,16 @@ import { BreaMark } from "./BreaMark";
 
 export function SignInScreen({
   linkedinEnabled,
+  configFailed,
   backendError,
   onSignIn,
+  onRetry,
 }: {
   linkedinEnabled: boolean;
+  configFailed: boolean;
   backendError: string | null;
   onSignIn: () => Promise<void>;
+  onRetry: () => Promise<void>;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +58,7 @@ export function SignInScreen({
 
           <button
             type="button"
-            disabled={!linkedinEnabled || isSubmitting}
+            disabled={(!linkedinEnabled && !configFailed) || isSubmitting}
             onClick={() => void signIn()}
             className="mt-7 flex w-full items-center justify-center gap-3 rounded-full bg-[#0a66c2] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#084f96] disabled:cursor-not-allowed disabled:opacity-45"
           >
@@ -62,7 +66,21 @@ export function SignInScreen({
             {isSubmitting ? "Opening LinkedIn…" : "Continue with LinkedIn"}
           </button>
 
-          {!linkedinEnabled && (
+          {configFailed && (
+            <div className="mt-4 rounded-2xl border border-[#d8aa4d]/30 bg-[#fff5d8] px-4 py-3 text-sm leading-relaxed text-[#715719]" role="status">
+              <p>
+                We're having trouble reaching the backend right now. You can try signing in anyway, or retry.
+              </p>
+              <button
+                type="button"
+                onClick={() => void onRetry()}
+                className="mt-2 font-bold underline underline-offset-2 transition hover:text-[#5a4514]"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!linkedinEnabled && !configFailed && (
             <p className="mt-4 rounded-2xl border border-[#d8aa4d]/30 bg-[#fff5d8] px-4 py-3 text-sm leading-relaxed text-[#715719]" role="status">
               LinkedIn is not enabled in this InsForge project yet. Add the LinkedIn OAuth client ID and secret in InsForge, then reload this page.
             </p>
