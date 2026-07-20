@@ -9,6 +9,7 @@ import { ProfileSetup } from "./components/ProfileSetup";
 import { SearchForm } from "./components/SearchForm";
 import { SignInScreen } from "./components/SignInScreen";
 import { SunsetRadar } from "./components/SunsetRadar";
+import { WelcomeIntro } from "./components/WelcomeIntro";
 import {
   blockProfile,
   ConnectionRequestError,
@@ -77,6 +78,7 @@ export function App() {
   const [profile, setProfile] = useState<BreaProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [slowConnection, setSlowConnection] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +198,7 @@ export function App() {
     async function saveProfile(input: ProfileUpdateInput) {
       if (!auth.user) return;
       setProfile(await updateCurrentProfile(auth.user.id, input));
+      setShowWelcome(true);
       void trackProductEvent("profile_completed").catch(() => undefined);
     }
 
@@ -215,6 +218,10 @@ export function App() {
       profileToUpdateInput(profile, { latitude, longitude }),
     );
     setProfile(next);
+  }
+
+  if (showWelcome) {
+    return <WelcomeIntro onDone={() => setShowWelcome(false)} />;
   }
 
   return (
