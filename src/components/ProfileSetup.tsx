@@ -50,6 +50,11 @@ export function ProfileSetup({
   const [error, setError] = useState<string | null>(null);
   const [avatarFailed, setAvatarFailed] = useState(false);
 
+  // A profile can only be discoverable once it has coordinates (enforced by the
+  // profiles_discoverable_is_complete DB check). Gate the toggle on this so the
+  // saved value can never violate that constraint.
+  const hasCoords = latitude !== null && longitude !== null;
+
   function useCurrentLocation() {
     setError(null);
     if (!navigator.geolocation) {
@@ -98,7 +103,7 @@ export function ProfileSetup({
         longitude,
         linkedinProfileUrl: linkedInUrl || null,
         onboardingCompleted: true,
-        isDiscoverable,
+        isDiscoverable: isDiscoverable && hasCoords,
         isAvailable,
       });
     } catch (nextError) {
@@ -221,13 +226,14 @@ export function ProfileSetup({
             <label className="flex cursor-pointer items-start gap-3 rounded-xl p-2 hover:bg-cream/70">
               <input
                 type="checkbox"
-                checked={isDiscoverable}
+                checked={isDiscoverable && hasCoords}
+                disabled={!hasCoords}
                 onChange={(event) => setIsDiscoverable(event.target.checked)}
                 className="mt-1 h-4 w-4 accent-forest"
               />
               <span>
                 <span className="block text-sm font-bold">Show me in discovery</span>
-                <span className="mt-1 block text-xs leading-relaxed text-moss">Turn this off to stop appearing in other members' search results.</span>
+                <span className="mt-1 block text-xs leading-relaxed text-moss">Turn this off to stop appearing in other members' search results.{!hasCoords && " Requires your location."}</span>
               </span>
             </label>
             <label className="flex cursor-pointer items-start gap-3 rounded-xl p-2 hover:bg-cream/70">
@@ -246,7 +252,7 @@ export function ProfileSetup({
 
           {error && <p role="alert" className="text-sm text-[#a44734] sm:col-span-2">{error}</p>}
           <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="max-w-lg text-xs leading-relaxed text-moss">{isDiscoverable ? "Your chosen profile details can appear to signed-in Brea members." : "Your profile will stay hidden from discovery."} You can change this any time.</p>
+            <p className="max-w-lg text-xs leading-relaxed text-moss">{isDiscoverable && hasCoords ? "Your chosen profile details can appear to signed-in Brea members." : "Your profile will stay hidden from discovery."} You can change this any time.</p>
             <button type="submit" disabled={isSaving} className="rounded-full bg-forest px-6 py-3 text-sm font-bold text-white transition hover:bg-ink disabled:opacity-50">
               {isSaving ? "Saving…" : mode === "onboarding" ? "Save and start exploring" : "Save profile changes"}
             </button>
