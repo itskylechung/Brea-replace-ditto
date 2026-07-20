@@ -6,6 +6,7 @@ import { DiscoverySteps } from "./components/DiscoverySteps";
 import { EmptyState } from "./components/EmptyState";
 import { PersonCard } from "./components/PersonCard";
 import { ProfileSetup } from "./components/ProfileSetup";
+import { ProfileView } from "./components/ProfileView";
 import { SearchForm } from "./components/SearchForm";
 import { SignInScreen } from "./components/SignInScreen";
 import { SunsetRadar } from "./components/SunsetRadar";
@@ -235,7 +236,7 @@ export function App() {
   );
 }
 
-type DiscoveryView = "discover" | "requests";
+type DiscoveryView = "discover" | "requests" | "profile";
 
 function DiscoveryApp({
   profile,
@@ -487,13 +488,23 @@ function DiscoveryApp({
             >
               Requests
             </button>
+            <button
+              type="button"
+              onClick={() => setView("profile")}
+              aria-current={view === "profile" ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                view === "profile" ? "bg-cream-light text-ink" : "text-steel hover:text-ink"
+              }`}
+            >
+              Profile
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setIsEditingProfile(true)}
+              onClick={() => setView("profile")}
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream-light"
-              aria-label="Edit your profile and privacy"
+              aria-label="View your profile"
             >
               {profile.avatarUrl && (
                 <img
@@ -520,6 +531,10 @@ function DiscoveryApp({
         {view === "requests" ? (
           <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
             <ConnectionRequests />
+          </div>
+        ) : view === "profile" ? (
+          <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
+            <ProfileView profile={profile} onEdit={() => setIsEditingProfile(true)} />
           </div>
         ) : (
           <>
