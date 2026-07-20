@@ -306,6 +306,31 @@ export async function updateCurrentProfile(
   return parseProfile(data);
 }
 
+// Serialize an existing profile into the update payload, applying overrides.
+// Used to persist a single field (e.g. a newly captured location) without
+// re-collecting the rest of the profile.
+export function profileToUpdateInput(
+  profile: BreaProfile,
+  overrides: Partial<ProfileUpdateInput> = {},
+): ProfileUpdateInput {
+  return {
+    name: profile.name,
+    headline: profile.headline ?? "",
+    bio: profile.bio,
+    skills: profile.skills,
+    interests: profile.interests,
+    availability: profile.availability,
+    locationLabel: profile.locationLabel ?? "",
+    latitude: profile.latitude,
+    longitude: profile.longitude,
+    linkedinProfileUrl: profile.linkedinProfileUrl,
+    onboardingCompleted: profile.onboardingCompleted,
+    isDiscoverable: profile.isDiscoverable,
+    isAvailable: profile.isAvailable,
+    ...overrides,
+  };
+}
+
 export async function searchNearbyPeople(input: {
   query: string;
   radiusKm: number;

@@ -78,7 +78,7 @@ The backend `BREA_ALLOWED_ORIGINS` allowlist must include the exact frontend URL
 
 Shipped and in scope:
 
-- LinkedIn OAuth sign-in (required) with a per-user private profile and first-run onboarding (name, headline, bio, skills, interests, availability, general location, and a private geolocation origin).
+- LinkedIn OAuth sign-in (required) with a per-user private profile and first-run onboarding (name, headline, bio, skills, interests, availability, general location, and an optional private geolocation origin (required before the first search)).
 - Nearby natural-language search with an adjustable radius (1–50 km, default 10 km).
 - Connection lifecycle: send a request, accept or decline it in a **Requests inbox**, and re-request after a decline. A member's optional LinkedIn URL is exchanged only once a request is accepted.
 - Per-card hide (block) and report; product-event tracking.
@@ -93,7 +93,7 @@ Out of scope (see [PRD.md](./PRD.md) §19 for the roadmap):
 ## Current limitations
 
 - LinkedIn credentials and allowed redirect URLs must be configured separately in each environment.
-- Members explicitly provide browser location during onboarding; exact coordinates stay private.
+- Members add their private location when they first search (or any time in profile editing); exact coordinates stay private.
 - LinkedIn's normal sign-in scope provides basic identity (name, email, photo), not a complete résumé or arbitrary member data.
 - The live site currently runs on the Preview InsForge backend; a dedicated Production project is future work.
 

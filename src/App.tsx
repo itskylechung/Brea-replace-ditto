@@ -9,10 +9,12 @@ import { ProfileSetup } from "./components/ProfileSetup";
 import { SearchForm } from "./components/SearchForm";
 import { SignInScreen } from "./components/SignInScreen";
 import { SunsetRadar } from "./components/SunsetRadar";
+import { WelcomeIntro } from "./components/WelcomeIntro";
 import {
   blockProfile,
   ConnectionRequestError,
   ensureCurrentProfile,
+  profileToUpdateInput,
   reportProfile,
   searchNearbyPeople,
   sendConnectionRequest,
@@ -76,6 +78,7 @@ export function App() {
   const [profile, setProfile] = useState<BreaProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [slowConnection, setSlowConnection] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,10 +198,11 @@ export function App() {
     async function saveProfile(input: ProfileUpdateInput) {
       if (!auth.user) return;
       setProfile(await updateCurrentProfile(auth.user.id, input));
+      setShowWelcome(true);
       void trackProductEvent("profile_completed").catch(() => undefined);
     }
 
-    return <ProfileSetup profile={profile} onSave={saveProfile} onSignOut={auth.signOut} />;
+    return <ProfileSetup profile={profile} email={auth.user.email} onSave={saveProfile} onSignOut={auth.signOut} />;
   }
 
   async function saveEditedProfile(input: ProfileUpdateInput) {
@@ -207,8 +211,27 @@ export function App() {
     void trackProductEvent("profile_updated").catch(() => undefined);
   }
 
+  async function saveLocation(latitude: number, longitude: number) {
+    if (!auth.user || !profile) return;
+    const next = await updateCurrentProfile(
+      auth.user.id,
+      profileToUpdateInput(profile, { latitude, longitude }),
+    );
+    setProfile(next);
+  }
+
+  if (showWelcome) {
+    return <WelcomeIntro onDone={() => setShowWelcome(false)} />;
+  }
+
   return (
-    <DiscoveryApp profile={profile} onSaveProfile={saveEditedProfile} onSignOut={auth.signOut} />
+    <DiscoveryApp
+      profile={profile}
+      email={auth.user.email}
+      onSaveProfile={saveEditedProfile}
+      onSaveLocation={saveLocation}
+      onSignOut={auth.signOut}
+    />
   );
 }
 
@@ -216,11 +239,15 @@ type DiscoveryView = "discover" | "requests";
 
 function DiscoveryApp({
   profile,
+  email,
   onSaveProfile,
+  onSaveLocation,
   onSignOut,
 }: {
   profile: BreaProfile;
+  email: string;
   onSaveProfile: (input: ProfileUpdateInput) => Promise<void>;
+  onSaveLocation: (latitude: number, longitude: number) => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
   const [view, setView] = useState<DiscoveryView>("discover");
@@ -233,7 +260,15 @@ function DiscoveryApp({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionUiState>>({});
+  const [pendingSearch, setPendingSearch] = useState<{ query: string; radiusKm: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
   const resultsSectionRef = useRef<HTMLElement>(null);
+
+  // Coordinates are deferred from onboarding, so a profile can reach discovery
+  // without them. Searching is gated locally until they are set — the
+  // people-search function otherwise 409s with PROFILE_SETUP_REQUIRED.
+  const needsLocation = profile.latitude === null || profile.longitude === null;
 
   function revealSearchOutcome() {
     const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
@@ -255,6 +290,21 @@ function DiscoveryApp({
     }
 
     setValidationError(null);
+
+    // Without a stored origin, hold the search and prompt for location first.
+    // Once saved, locateForPendingSearch runs the pending search automatically.
+    if (needsLocation) {
+      setPendingSearch({ query: normalizedQuery, radiusKm: searchRadius });
+      setLocateError(null);
+      revealSearchOutcome();
+      return;
+    }
+
+    await executeSearch(normalizedQuery, searchRadius);
+  }
+
+  async function executeSearch(normalizedQuery: string, searchRadius: number) {
+    setPendingSearch(null);
     setSearchError(null);
     setSearchStatus("loading");
     setSubmittedQuery(normalizedQuery);
@@ -291,6 +341,37 @@ function DiscoveryApp({
       setSearchStatus("error");
       revealSearchOutcome();
     }
+  }
+
+  function locateForPendingSearch() {
+    const target = pendingSearch;
+    if (!target) return;
+    setLocateError(null);
+    if (!navigator.geolocation) {
+      setLocateError("This browser cannot provide a location.");
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        void (async () => {
+          try {
+            await onSaveLocation(coords.latitude, coords.longitude);
+            setPendingSearch(null);
+            setIsLocating(false);
+            await executeSearch(target.query, target.radiusKm);
+          } catch (error) {
+            setLocateError(readableError(error, "We could not save your location. Please try again."));
+            setIsLocating(false);
+          }
+        })();
+      },
+      () => {
+        setLocateError("We could not read your location. Check your browser permission and try again.");
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+    );
   }
 
   async function connectWith(person: PersonMatch) {
@@ -345,6 +426,7 @@ function DiscoveryApp({
     return (
       <ProfileSetup
         profile={profile}
+        email={email}
         mode="editing"
         onCancel={() => setIsEditingProfile(false)}
         onSave={async (input) => {
@@ -504,6 +586,31 @@ function DiscoveryApp({
             aria-live="polite"
             aria-busy={isLoading}
           >
+            {pendingSearch && needsLocation && (
+              <div className="rounded-xl border border-beige bg-cream-light px-6 py-12 text-center">
+                <h2 className="font-editorial text-3xl font-normal tracking-[-0.02em] text-ink">
+                  Add your location to search nearby
+                </h2>
+                <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-steel">
+                  Brea uses your exact location only to calculate distance. Other members only ever see
+                  an approximate distance — never where you are.
+                </p>
+                <button
+                  type="button"
+                  onClick={locateForPendingSearch}
+                  disabled={isLocating}
+                  className="mt-6 rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
+                >
+                  {isLocating ? "Locating…" : "Use current location"}
+                </button>
+                {locateError && (
+                  <p role="alert" className="mx-auto mt-4 max-w-lg text-sm leading-6 text-signal">
+                    {locateError}
+                  </p>
+                )}
+              </div>
+            )}
+
             {isLoading && (
               <div className="grid gap-5 md:grid-cols-2" aria-label="Searching for nearby people">
                 {[1, 2, 3, 4].map((item) => (

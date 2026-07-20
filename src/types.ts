@@ -87,8 +87,8 @@ export interface ProfileUpdateInput {
   interests: string[];
   availability: string | null;
   locationLabel: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   linkedinProfileUrl: string | null;
   onboardingCompleted: boolean;
   isDiscoverable: boolean;
