@@ -15,10 +15,21 @@ on:
 
 # Plain project identifiers — safe to inline, so the only required secret is
 # VERCEL_TOKEN. The Vercel CLI reads ORG/PROJECT IDs from the environment.
+#
+# The VITE_ values are also inlined here, NOT read from Vercel env vars: the
+# Vercel project enforces a Sensitive-variables policy on production/preview,
+# and sensitive values cannot be decrypted by external CI — `vercel pull`
+# hands back literal "[SENSITIVE]" placeholders, which bricked the first CI
+# deploy. These values are public client config baked into every shipped
+# bundle anyway. Repoint them here when the real Production InsForge project
+# lands (OPS-02 / issue #26).
 env:
   VERCEL_ORG_ID: team_AsxeTZXp7lznFDHlzyM6SiMA
   VERCEL_PROJECT_ID: prj_o703rEVpuDhQAULkr9zPExnCH86L
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VITE_INSFORGE_URL: https://35byng5f.ap-southeast.insforge.app
+  VITE_INSFORGE_FUNCTIONS_URL: https://35byng5f.function2.insforge.app
+  VITE_INSFORGE_ANON_KEY: anon_9d644360a838c6663e52dcb41550c5df93ffd0b7613e2f8b493d39b3ccf037a0
 
 jobs:
   preview:
@@ -45,6 +56,11 @@ jobs:
 
       - name: Pull Vercel environment (preview)
         run: vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
+
+      # Sensitive-policy vars arrive as "[SENSITIVE]" placeholders; drop them so
+      # the workflow-level VITE_ env feeds the build instead.
+      - name: Strip unreadable VITE_ placeholders from pulled env
+        run: sed -i '/^VITE_/d' .vercel/.env.*.local 2>/dev/null || true
 
       - name: Build project artifacts
         run: vercel build --token=$VERCEL_TOKEN
@@ -119,6 +135,11 @@ jobs:
 
       - name: Pull Vercel environment (production)
         run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      # Sensitive-policy vars arrive as "[SENSITIVE]" placeholders; drop them so
+      # the workflow-level VITE_ env feeds the build instead.
+      - name: Strip unreadable VITE_ placeholders from pulled env
+        run: sed -i '/^VITE_/d' .vercel/.env.*.local 2>/dev/null || true
 
       - name: Build project artifacts (production)
         run: vercel build --prod --token=$VERCEL_TOKEN
