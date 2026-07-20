@@ -1,0 +1,127 @@
+name: Deploy
+
+# Cross-ownership note: the repo is owned by `itskylechung` while the Vercel
+# project lives under the `rex-yens-projects` team. We deploy through the Vercel
+# CLI with a single team-scoped token (one deploy identity for every commit
+# author) instead of `vercel git connect`, which would gate deploys on the
+# Vercel GitHub App being installed on the repo owner's account and could trip
+# Vercel's COMMIT_AUTHOR_REQUIRED seat block for non-member commit authors.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+# Plain project identifiers — safe to inline, so the only required secret is
+# VERCEL_TOKEN. The Vercel CLI reads ORG/PROJECT IDs from the environment.
+env:
+  VERCEL_ORG_ID: team_AsxeTZXp7lznFDHlzyM6SiMA
+  VERCEL_PROJECT_ID: prj_o703rEVpuDhQAULkr9zPExnCH86L
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+jobs:
+  preview:
+    name: Deploy Preview
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: preview-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@56
+
+      - name: Pull Vercel environment (preview)
+        run: vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
+
+      - name: Build project artifacts
+        run: vercel build --token=$VERCEL_TOKEN
+
+      - name: Deploy prebuilt artifacts to Vercel
+        id: deploy
+        run: |
+          url="$(vercel deploy --prebuilt --token=$VERCEL_TOKEN)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const sha = context.sha.substring(0, 7);
+            const marker = '<!-- vercel-preview-deployment -->';
+            const body = [
+              marker,
+              '### Vercel preview deployment',
+              '',
+              `Latest commit \`${sha}\` deployed to a preview URL:`,
+              '',
+              url,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(
+              (c) => c.body && c.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  production:
+    name: Deploy Production
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # No cancel-in-progress: queue production deploys, never kill one midway.
+    concurrency:
+      group: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@56
+
+      - name: Pull Vercel environment (production)
+        run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      - name: Build project artifacts (production)
+        run: vercel build --prod --token=$VERCEL_TOKEN
+
+      - name: Deploy prebuilt artifacts to production
+        run: vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
