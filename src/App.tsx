@@ -198,7 +198,7 @@ export function App() {
       void trackProductEvent("profile_completed").catch(() => undefined);
     }
 
-    return <ProfileSetup profile={profile} onSave={saveProfile} onSignOut={auth.signOut} />;
+    return <ProfileSetup profile={profile} email={auth.user.email} onSave={saveProfile} onSignOut={auth.signOut} />;
   }
 
   async function saveEditedProfile(input: ProfileUpdateInput) {
@@ -208,7 +208,7 @@ export function App() {
   }
 
   return (
-    <DiscoveryApp profile={profile} onSaveProfile={saveEditedProfile} onSignOut={auth.signOut} />
+    <DiscoveryApp profile={profile} email={auth.user.email} onSaveProfile={saveEditedProfile} onSignOut={auth.signOut} />
   );
 }
 
@@ -216,10 +216,12 @@ type DiscoveryView = "discover" | "requests";
 
 function DiscoveryApp({
   profile,
+  email,
   onSaveProfile,
   onSignOut,
 }: {
   profile: BreaProfile;
+  email: string;
   onSaveProfile: (input: ProfileUpdateInput) => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
@@ -345,6 +347,7 @@ function DiscoveryApp({
     return (
       <ProfileSetup
         profile={profile}
+        email={email}
         mode="editing"
         onCancel={() => setIsEditingProfile(false)}
         onSave={async (input) => {

@@ -6,14 +6,26 @@ function tagsFrom(value: string): string[] {
   return [...new Set(value.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 20);
 }
 
+// Duplicated locally from PersonCard.tsx; consolidating the shared helper is out of scope.
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
 export function ProfileSetup({
   profile,
+  email,
   onSave,
   onSignOut,
   mode = "onboarding",
   onCancel,
 }: {
   profile: BreaProfile;
+  email: string;
   onSave: (input: ProfileUpdateInput) => Promise<void>;
   onSignOut: () => Promise<void>;
   mode?: "onboarding" | "editing";
@@ -38,6 +50,7 @@ export function ProfileSetup({
   const [isLocating, setIsLocating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   function useCurrentLocation() {
     setError(null);
@@ -102,6 +115,7 @@ export function ProfileSetup({
   }
 
   const fieldClass = "mt-2 w-full rounded-2xl border border-ink/10 bg-white/80 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-moss/55 focus:border-forest/45 focus:ring-2 focus:ring-forest/10";
+  const matchingChipClass = "ml-2 rounded-full bg-forest/10 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-[0.1em] text-forest align-middle";
 
   return (
     <div className="min-h-screen bg-cream px-5 py-7 text-ink sm:px-8">
@@ -120,22 +134,57 @@ export function ProfileSetup({
         <p className="mt-4 max-w-2xl leading-relaxed text-moss">{mode === "onboarding" ? "LinkedIn gave us the basics. Add the context that makes a nearby introduction useful." : "Update what other members can discover, refresh your private location, or pause your visibility."} Exact coordinates are never shown to other members.</p>
 
         <form onSubmit={(event) => void submit(event)} className="mt-9 grid gap-6 rounded-[2rem] border border-paper/80 bg-paper/65 p-6 shadow-card sm:grid-cols-2 sm:p-9">
+          <div className="grid gap-3 rounded-2xl border border-forest/10 bg-forest/[0.04] p-4 sm:col-span-2">
+            <div className="flex items-center gap-4">
+              <div className="shrink-0">
+                {profile.avatarUrl && !avatarFailed ? (
+                  <img
+                    src={profile.avatarUrl}
+                    alt={`${profile.name}'s profile`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarFailed(true)}
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <div
+                    aria-label={`${profile.name}'s initials`}
+                    className="grid h-16 w-16 place-items-center rounded-full bg-cream-deeper text-lg font-semibold text-primary-deep"
+                  >
+                    {initials(profile.name)}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-base font-bold">{profile.name}</p>
+                  <span className="rounded-full bg-white/70 border border-forest/15 px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-[0.13em] text-forest">From LinkedIn</span>
+                </div>
+                <p className="text-sm text-moss">{email}</p>
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-moss">These came with your sign-in. Your name is editable below; your photo stays synced with LinkedIn.</p>
+          </div>
           <label className="text-sm font-bold">Name
             <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required className={fieldClass} />
           </label>
           <label className="text-sm font-bold">Headline
+            <span className={matchingChipClass}>Improves matching</span>
             <input value={headline} onChange={(event) => setHeadline(event.target.value)} maxLength={180} required placeholder="Product designer building climate tools" className={fieldClass} />
           </label>
           <label className="text-sm font-bold sm:col-span-2">Short bio
             <textarea value={bio} onChange={(event) => setBio(event.target.value)} maxLength={1000} rows={3} className={fieldClass} />
           </label>
           <label className="text-sm font-bold">Skills <span className="font-normal text-moss">(comma-separated)</span>
+            <span className={matchingChipClass}>Improves matching</span>
             <input value={skills} onChange={(event) => setSkills(event.target.value)} placeholder="TypeScript, product strategy" className={fieldClass} />
           </label>
           <label className="text-sm font-bold">Interests <span className="font-normal text-moss">(comma-separated)</span>
+            <span className={matchingChipClass}>Improves matching</span>
             <input value={interests} onChange={(event) => setInterests(event.target.value)} placeholder="Climate tech, cycling" className={fieldClass} />
           </label>
           <label className="text-sm font-bold">Availability
+            <span className={matchingChipClass}>Improves matching</span>
             <input value={availability} onChange={(event) => setAvailability(event.target.value)} maxLength={180} placeholder="Coffee on weekday afternoons" className={fieldClass} />
           </label>
           <label className="text-sm font-bold">General location
