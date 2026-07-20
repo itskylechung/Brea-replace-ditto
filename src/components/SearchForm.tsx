@@ -14,6 +14,7 @@ interface SearchFormProps {
   onQueryChange: (query: string) => void;
   onRadiusChange: (radiusKm: number) => void;
   onSubmit: () => void;
+  onExampleSelect: (query: string) => void;
 }
 
 export function SearchForm({
@@ -24,6 +25,7 @@ export function SearchForm({
   onQueryChange,
   onRadiusChange,
   onSubmit,
+  onExampleSelect,
 }: SearchFormProps) {
   const radiusProgress = `${((radiusKm - 1) / 49) * 100}%`;
 
@@ -108,8 +110,9 @@ export function SearchForm({
               <button
                 key={example}
                 type="button"
-                onClick={() => onQueryChange(example)}
-                className="rounded-full bg-cream-deeper px-3 py-1.5 text-left text-xs font-semibold text-ink transition hover:bg-sunshine-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                disabled={isLoading}
+                onClick={() => onExampleSelect(example)}
+                className="rounded-full bg-cream-deeper px-3 py-1.5 text-left text-xs font-semibold text-ink transition hover:bg-sunshine-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-50"
               >
                 {example}
               </button>

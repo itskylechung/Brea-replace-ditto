@@ -10,10 +10,14 @@ export function ProfileSetup({
   profile,
   onSave,
   onSignOut,
+  mode = "onboarding",
+  onCancel,
 }: {
   profile: BreaProfile;
   onSave: (input: ProfileUpdateInput) => Promise<void>;
   onSignOut: () => Promise<void>;
+  mode?: "onboarding" | "editing";
+  onCancel?: () => void;
 }) {
   const [name, setName] = useState(profile.name);
   const [headline, setHeadline] = useState(profile.headline ?? "");
@@ -25,6 +29,12 @@ export function ProfileSetup({
   const [linkedinProfileUrl, setLinkedinProfileUrl] = useState(profile.linkedinProfileUrl ?? "");
   const [latitude, setLatitude] = useState<number | null>(profile.latitude);
   const [longitude, setLongitude] = useState<number | null>(profile.longitude);
+  const [isDiscoverable, setIsDiscoverable] = useState(
+    mode === "onboarding" ? true : profile.isDiscoverable,
+  );
+  const [isAvailable, setIsAvailable] = useState(
+    mode === "onboarding" ? true : profile.isAvailable,
+  );
   const [isLocating, setIsLocating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,8 +91,8 @@ export function ProfileSetup({
         longitude,
         linkedinProfileUrl: linkedInUrl || null,
         onboardingCompleted: true,
-        isDiscoverable: true,
-        isAvailable: true,
+        isDiscoverable,
+        isAvailable,
       });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Your profile could not be saved.");
@@ -97,12 +107,17 @@ export function ProfileSetup({
     <div className="min-h-screen bg-cream px-5 py-7 text-ink sm:px-8">
       <header className="mx-auto flex w-full max-w-4xl items-center justify-between">
         <BreaMark />
-        <button type="button" onClick={() => void onSignOut()} className="text-sm font-bold text-moss hover:text-ink">Sign out</button>
+        <div className="flex items-center gap-4">
+          {mode === "editing" && onCancel && (
+            <button type="button" onClick={onCancel} className="text-sm font-bold text-moss hover:text-ink">Back to discovery</button>
+          )}
+          <button type="button" onClick={() => void onSignOut()} className="text-sm font-bold text-moss hover:text-ink">Sign out</button>
+        </div>
       </header>
       <main className="mx-auto max-w-4xl py-12">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-coral">One-minute setup</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">Review what people will see.</h1>
-        <p className="mt-4 max-w-2xl leading-relaxed text-moss">LinkedIn gave us the basics. Add the context that makes a nearby introduction useful. Exact coordinates are never shown to other members.</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-coral">{mode === "onboarding" ? "One-minute setup" : "Profile and privacy"}</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">{mode === "onboarding" ? "Review what people will see." : "Keep your discovery profile current."}</h1>
+        <p className="mt-4 max-w-2xl leading-relaxed text-moss">{mode === "onboarding" ? "LinkedIn gave us the basics. Add the context that makes a nearby introduction useful." : "Update what other members can discover, refresh your private location, or pause your visibility."} Exact coordinates are never shown to other members.</p>
 
         <form onSubmit={(event) => void submit(event)} className="mt-9 grid gap-6 rounded-[2rem] border border-paper/80 bg-paper/65 p-6 shadow-card sm:grid-cols-2 sm:p-9">
           <label className="text-sm font-bold">Name
@@ -142,11 +157,39 @@ export function ProfileSetup({
             </div>
           </div>
 
+          <fieldset className="grid gap-3 rounded-2xl border border-forest/10 bg-white/65 p-4 sm:col-span-2 sm:grid-cols-2">
+            <legend className="px-1 text-sm font-bold">Discovery controls</legend>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl p-2 hover:bg-cream/70">
+              <input
+                type="checkbox"
+                checked={isDiscoverable}
+                onChange={(event) => setIsDiscoverable(event.target.checked)}
+                className="mt-1 h-4 w-4 accent-forest"
+              />
+              <span>
+                <span className="block text-sm font-bold">Show me in discovery</span>
+                <span className="mt-1 block text-xs leading-relaxed text-moss">Turn this off to stop appearing in other members' search results.</span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl p-2 hover:bg-cream/70">
+              <input
+                type="checkbox"
+                checked={isAvailable}
+                onChange={(event) => setIsAvailable(event.target.checked)}
+                className="mt-1 h-4 w-4 accent-forest"
+              />
+              <span>
+                <span className="block text-sm font-bold">Open to new connections</span>
+                <span className="mt-1 block text-xs leading-relaxed text-moss">Pause new requests without deleting your profile.</span>
+              </span>
+            </label>
+          </fieldset>
+
           {error && <p role="alert" className="text-sm text-[#a44734] sm:col-span-2">{error}</p>}
           <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="max-w-lg text-xs leading-relaxed text-moss">Saving publishes this profile to signed-in Brea members. You remain in control of future edits and visibility.</p>
+            <p className="max-w-lg text-xs leading-relaxed text-moss">{isDiscoverable ? "Your chosen profile details can appear to signed-in Brea members." : "Your profile will stay hidden from discovery."} You can change this any time.</p>
             <button type="submit" disabled={isSaving} className="rounded-full bg-forest px-6 py-3 text-sm font-bold text-white transition hover:bg-ink disabled:opacity-50">
-              {isSaving ? "Saving…" : "Save and start exploring"}
+              {isSaving ? "Saving…" : mode === "onboarding" ? "Save and start exploring" : "Save profile changes"}
             </button>
           </div>
         </form>

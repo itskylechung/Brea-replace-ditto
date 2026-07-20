@@ -1,4 +1,4 @@
-export type ConnectionStatus = "none" | "pending";
+export type ConnectionStatus = "none" | "outgoing_pending" | "incoming_pending" | "accepted";
 
 export interface PersonMatch {
   id: string;
@@ -21,10 +21,44 @@ export interface PeopleSearchResponse {
 export interface ConnectionResponse {
   id: string;
   recipientId: string;
-  status: "pending";
+  status: "pending" | "accepted";
   createdAt: string;
   created: boolean;
 }
+
+export type ConnectionLifecycleStatus = "pending" | "accepted" | "declined";
+
+export interface ConnectionPerson {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  headline: string | null;
+  locationLabel: string | null;
+  linkedinProfileUrl: string | null;
+}
+
+export interface ConnectionItem {
+  id: string;
+  direction: "incoming" | "outgoing";
+  status: ConnectionLifecycleStatus;
+  sourceQuery: string;
+  createdAt: string;
+  respondedAt: string | null;
+  person: ConnectionPerson;
+}
+
+export interface ConnectionInboxResponse {
+  incoming: ConnectionItem[];
+  outgoing: ConnectionItem[];
+}
+
+export interface ConnectionDecisionResponse {
+  id: string;
+  status: "accepted" | "declined";
+  respondedAt: string;
+}
+
+export type ReportReason = "spam" | "harassment" | "misleading" | "unsafe" | "other";
 
 export interface BreaProfile {
   id: string;
@@ -67,4 +101,6 @@ export type ConnectionUiState =
   | { status: "none" }
   | { status: "submitting" }
   | { status: "pending"; created: boolean }
+  | { status: "incoming" }
+  | { status: "accepted" }
   | { status: "error"; message: string };

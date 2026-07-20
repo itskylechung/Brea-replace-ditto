@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth/AuthContext";
 import { BreaMark } from "./components/BreaMark";
+import { ConnectionRequests } from "./components/ConnectionRequests";
 import { DiscoverySteps } from "./components/DiscoverySteps";
 import { EmptyState } from "./components/EmptyState";
 import { PersonCard } from "./components/PersonCard";
@@ -9,9 +10,12 @@ import { SearchForm } from "./components/SearchForm";
 import { SignInScreen } from "./components/SignInScreen";
 import { SunsetRadar } from "./components/SunsetRadar";
 import {
+  blockProfile,
   ensureCurrentProfile,
+  reportProfile,
   searchNearbyPeople,
   sendConnectionRequest,
+  trackProductEvent,
   updateCurrentProfile,
 } from "./lib/api";
 import type {
@@ -19,13 +23,25 @@ import type {
   ConnectionUiState,
   PersonMatch,
   ProfileUpdateInput,
+  ReportReason,
   SearchStatus,
 } from "./types";
 
 const DEFAULT_RADIUS_KM = 10;
+const SIGN_IN_TRACKED_KEY = "brea:sign-in-tracked";
 
 function readableError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
+
+function trackOnce(eventName: "sign_in_completed") {
+  try {
+    if (window.sessionStorage.getItem(SIGN_IN_TRACKED_KEY)) return;
+    window.sessionStorage.setItem(SIGN_IN_TRACKED_KEY, "1");
+  } catch {
+    return;
+  }
+  void trackProductEvent(eventName).catch(() => undefined);
 }
 
 export function App() {
@@ -42,6 +58,7 @@ export function App() {
         if (!cancelled) {
           setProfileError(null);
           setProfile(nextProfile);
+          trackOnce("sign_in_completed");
         }
       })
       .catch((error: unknown) => {
@@ -109,21 +126,36 @@ export function App() {
     async function saveProfile(input: ProfileUpdateInput) {
       if (!auth.user) return;
       setProfile(await updateCurrentProfile(auth.user.id, input));
+      void trackProductEvent("profile_completed").catch(() => undefined);
     }
 
     return <ProfileSetup profile={profile} onSave={saveProfile} onSignOut={auth.signOut} />;
   }
 
-  return <DiscoveryApp profile={profile} onSignOut={auth.signOut} />;
+  async function saveEditedProfile(input: ProfileUpdateInput) {
+    if (!auth.user) return;
+    setProfile(await updateCurrentProfile(auth.user.id, input));
+    void trackProductEvent("profile_updated").catch(() => undefined);
+  }
+
+  return (
+    <DiscoveryApp profile={profile} onSaveProfile={saveEditedProfile} onSignOut={auth.signOut} />
+  );
 }
+
+type DiscoveryView = "discover" | "requests";
 
 function DiscoveryApp({
   profile,
+  onSaveProfile,
   onSignOut,
 }: {
   profile: BreaProfile;
+  onSaveProfile: (input: ProfileUpdateInput) => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
+  const [view, setView] = useState<DiscoveryView>("discover");
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [query, setQuery] = useState("");
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
   const [submittedQuery, setSubmittedQuery] = useState("");
@@ -170,10 +202,15 @@ function DiscoveryApp({
         const next: Record<string, ConnectionUiState> = {};
         for (const person of response.results) {
           const previous = current[person.id];
-          next[person.id] =
-            person.connectionStatus === "pending" || previous?.status === "pending"
-              ? { status: "pending", created: false }
-              : { status: "none" };
+          if (person.connectionStatus === "accepted") {
+            next[person.id] = { status: "accepted" };
+          } else if (person.connectionStatus === "incoming_pending") {
+            next[person.id] = { status: "incoming" };
+          } else if (person.connectionStatus === "outgoing_pending" || previous?.status === "pending") {
+            next[person.id] = { status: "pending", created: false };
+          } else {
+            next[person.id] = { status: "none" };
+          }
         }
         return next;
       });
@@ -220,7 +257,36 @@ function DiscoveryApp({
     void runSearch(submittedQuery || query, nextRadius);
   }
 
+  async function hidePerson(person: PersonMatch) {
+    await blockProfile(person.id);
+    setResults((current) => current.filter((candidate) => candidate.id !== person.id));
+  }
+
+  async function reportPerson(person: PersonMatch, reason: ReportReason, details: string) {
+    await reportProfile({ profileId: person.id, reason, details: details || undefined });
+  }
+
+  function selectExample(example: string) {
+    updateQuery(example);
+    void runSearch(example);
+  }
+
   const isLoading = searchStatus === "loading";
+
+  if (isEditingProfile) {
+    return (
+      <ProfileSetup
+        profile={profile}
+        mode="editing"
+        onCancel={() => setIsEditingProfile(false)}
+        onSave={async (input) => {
+          await onSaveProfile(input);
+          setIsEditingProfile(false);
+        }}
+        onSignOut={onSignOut}
+      />
+    );
+  }
 
   return (
     <div id="top" className="min-h-screen bg-canvas text-ink">
@@ -230,16 +296,45 @@ function DiscoveryApp({
           aria-label="Primary navigation"
         >
           <BreaMark />
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setView("discover")}
+              aria-current={view === "discover" ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                view === "discover" ? "bg-cream-light text-ink" : "text-steel hover:text-ink"
+              }`}
+            >
+              Discover
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("requests")}
+              aria-current={view === "requests" ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                view === "requests" ? "bg-cream-light text-ink" : "text-steel hover:text-ink"
+              }`}
+            >
+              Requests
+            </button>
+          </div>
           <div className="flex items-center gap-3">
-            {profile.avatarUrl && (
-              <img
-                src={profile.avatarUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="h-9 w-9 rounded-full object-cover"
-              />
-            )}
-            <span className="hidden text-sm font-medium text-slate sm:inline">{profile.name}</span>
+            <button
+              type="button"
+              onClick={() => setIsEditingProfile(true)}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream-light"
+              aria-label="Edit your profile and privacy"
+            >
+              {profile.avatarUrl && (
+                <img
+                  src={profile.avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="h-9 w-9 rounded-full object-cover"
+                />
+              )}
+              <span className="hidden text-sm font-medium text-slate sm:inline">{profile.name}</span>
+            </button>
             <button
               type="button"
               onClick={() => void onSignOut()}
@@ -252,6 +347,12 @@ function DiscoveryApp({
       </header>
 
       <main>
+        {view === "requests" ? (
+          <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
+            <ConnectionRequests />
+          </div>
+        ) : (
+          <>
         <section className="hero-sunset overflow-hidden" aria-labelledby="page-title">
           <div className="mx-auto grid w-full max-w-[1280px] items-center gap-12 px-4 py-16 sm:px-8 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
             <div className="max-w-2xl">
@@ -321,6 +422,7 @@ function DiscoveryApp({
                 onQueryChange={updateQuery}
                 onRadiusChange={setRadiusKm}
                 onSubmit={() => void runSearch()}
+                onExampleSelect={selectExample}
               />
             </section>
 
@@ -407,6 +509,9 @@ function DiscoveryApp({
                       person={person}
                       connectionState={connectionStates[person.id] ?? { status: "none" }}
                       onConnect={(selectedPerson) => void connectWith(selectedPerson)}
+                      onHide={hidePerson}
+                      onReport={reportPerson}
+                      onViewRequests={() => setView("requests")}
                     />
                   ))}
                 </div>
@@ -414,6 +519,8 @@ function DiscoveryApp({
             )}
           </section>
         </div>
+          </>
+        )}
       </main>
 
       <div className="sunset-stripe h-8" aria-hidden="true" />
