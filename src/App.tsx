@@ -6,6 +6,7 @@ import { DiscoverySteps } from "./components/DiscoverySteps";
 import { EmptyState } from "./components/EmptyState";
 import { PersonCard } from "./components/PersonCard";
 import { ProfileSetup } from "./components/ProfileSetup";
+import { ProfileView } from "./components/ProfileView";
 import { SearchForm } from "./components/SearchForm";
 import { SignInScreen } from "./components/SignInScreen";
 import { SunsetRadar } from "./components/SunsetRadar";
@@ -14,6 +15,7 @@ import {
   blockProfile,
   ConnectionRequestError,
   ensureCurrentProfile,
+  listConnectionInbox,
   profileToUpdateInput,
   reportProfile,
   searchNearbyPeople,
@@ -235,7 +237,7 @@ export function App() {
   );
 }
 
-type DiscoveryView = "discover" | "requests";
+type DiscoveryView = "discover" | "requests" | "profile";
 
 function DiscoveryApp({
   profile,
@@ -251,6 +253,7 @@ function DiscoveryApp({
   onSignOut: () => Promise<void>;
 }) {
   const [view, setView] = useState<DiscoveryView>("discover");
+  const [pendingIncoming, setPendingIncoming] = useState<number | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [query, setQuery] = useState("");
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
@@ -266,6 +269,39 @@ function DiscoveryApp({
   const [discoveryNudge, setDiscoveryNudge] = useState<"hidden" | "visible" | "saving">("hidden");
   const [nudgeError, setNudgeError] = useState<string | null>(null);
   const resultsSectionRef = useRef<HTMLElement>(null);
+  const prevViewRef = useRef<DiscoveryView | null>(null);
+
+  // The Requests tab badge counts incoming requests still awaiting a response.
+  // Fetch once on mount, then refetch only when the view changes FROM "requests"
+  // to any other view, so acting on a request updates the count without polling.
+  // Failures are silent: pendingIncoming stays null and the badge stays hidden —
+  // it is never an error surface. Copies the cancelled-flag pattern above.
+  //
+  // `previousView === view` treats StrictMode's extra dev mount pass (which
+  // re-runs this effect with the same view and a non-null ref) as part of the
+  // initial fetch, so the badge still loads under StrictMode; `=== null` is the
+  // very first setup. Real view changes satisfy neither and only refetch on
+  // leaving requests.
+  useEffect(() => {
+    const previousView = prevViewRef.current;
+    prevViewRef.current = view;
+    const isInitialFetch = previousView === null || previousView === view;
+    const leftRequests = previousView === "requests" && view !== "requests";
+    if (!isInitialFetch && !leftRequests) return;
+
+    let cancelled = false;
+    void listConnectionInbox()
+      .then((inbox) => {
+        if (cancelled) return;
+        setPendingIncoming(inbox.incoming.filter((item) => item.status === "pending").length);
+      })
+      .catch(() => {
+        // Silent by design — leave pendingIncoming as-is (null on mount).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
 
   // Coordinates are deferred from onboarding, so a profile can reach discovery
   // without them. Searching is gated locally until they are set — the
@@ -481,19 +517,42 @@ function DiscoveryApp({
               type="button"
               onClick={() => setView("requests")}
               aria-current={view === "requests" ? "page" : undefined}
+              aria-label={
+                pendingIncoming !== null && pendingIncoming > 0
+                  ? `Requests, ${pendingIncoming} pending`
+                  : undefined
+              }
               className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                 view === "requests" ? "bg-cream-light text-ink" : "text-steel hover:text-ink"
               }`}
             >
               Requests
+              {pendingIncoming !== null && pendingIncoming > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] font-bold leading-none text-white"
+                >
+                  {pendingIncoming > 9 ? "9+" : pendingIncoming}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("profile")}
+              aria-current={view === "profile" ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                view === "profile" ? "bg-cream-light text-ink" : "text-steel hover:text-ink"
+              }`}
+            >
+              Profile
             </button>
           </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setIsEditingProfile(true)}
+              onClick={() => setView("profile")}
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream-light"
-              aria-label="Edit your profile and privacy"
+              aria-label="View your profile"
             >
               {profile.avatarUrl && (
                 <img
@@ -520,6 +579,10 @@ function DiscoveryApp({
         {view === "requests" ? (
           <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
             <ConnectionRequests />
+          </div>
+        ) : view === "profile" ? (
+          <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
+            <ProfileView profile={profile} onEdit={() => setIsEditingProfile(true)} />
           </div>
         ) : (
           <>
