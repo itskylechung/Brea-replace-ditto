@@ -6,6 +6,7 @@ import {
   handler,
   haversineKm,
   normalizeQuery,
+  parsePhotoUrls,
   type ProfileRow,
   rankProfile,
   validateSearchInput,
@@ -28,6 +29,7 @@ function profile(overrides: Partial<ProfileRow> = {}): ProfileRow {
     id: "00000000-0000-4000-8000-000000000101",
     name: "Maya Chen",
     avatar_url: null,
+    photos: [],
     headline: "Product designer",
     bio: "Designs mobile products",
     skills: ["product design", "prototyping"],
@@ -49,6 +51,28 @@ Deno.test("normalizeQuery strips punctuation, accents, duplicate terms, and stop
   assertEquals(
     normalizeQuery("A café person who is looking for HIKING, hiking!"),
     ["cafe", "hiking"],
+  );
+});
+
+Deno.test("parsePhotoUrls preserves valid gallery order and caps it at six", () => {
+  const photos = Array.from({ length: 8 }, (_, index) => ({
+    url: ` https://example.com/${index}.jpg `,
+    key: `user/${index}.jpg`,
+  }));
+  assertEquals(parsePhotoUrls(photos), photos.slice(0, 6).map((photo) => photo.url.trim()));
+});
+
+Deno.test("parsePhotoUrls rejects null, non-arrays, and malformed entries", () => {
+  assertEquals(parsePhotoUrls(null), []);
+  assertEquals(parsePhotoUrls({ url: "https://example.com/photo.jpg" }), []);
+  assertEquals(
+    parsePhotoUrls([
+      null,
+      "photo",
+      { key: "user/no-url.jpg" },
+      { url: "  ", key: "user/empty.jpg" },
+    ]),
+    [],
   );
 });
 

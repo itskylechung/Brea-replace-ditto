@@ -1,9 +1,15 @@
 export type ConnectionStatus = "none" | "outgoing_pending" | "incoming_pending" | "accepted";
 
+export interface ProfilePhoto {
+  url: string;
+  key: string;
+}
+
 export interface PersonMatch {
   id: string;
   name: string;
   avatarUrl: string | null;
+  photoUrls: string[];
   headline: string;
   bio: string | null;
   distanceKm: number;
@@ -65,6 +71,7 @@ export interface BreaProfile {
   userId: string;
   name: string;
   avatarUrl: string | null;
+  photos: ProfilePhoto[];
   headline: string | null;
   bio: string | null;
   skills: string[];

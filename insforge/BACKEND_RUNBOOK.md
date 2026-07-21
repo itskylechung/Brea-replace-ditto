@@ -73,6 +73,57 @@ npx @insforge/cli db migrations up --all      # apply all pending (or --to <vers
 mode must hand it to a human (`! <cmd>` in Claude Code), never run it itself. Confirm the target
 with `db migrations list` first.
 
+## Profile photo storage
+
+Issue #67 adds the first InsForge Storage surface: a public-read `profile-photos` bucket. Browser
+uploads use the signed-in member's access token, and the migration policies restrict inserts and
+deletes—and authenticated object listings—to the original uploader. Public bucket downloads use
+unguessable known-key URLs without exposing a bucket-wide listing, and object keys contain no user
+identifier. Profiles persist both the public `url` and storage `key` in the ordered
+`profiles.photos` JSON array; the key is required for deletion.
+
+Provision the bucket before shipping the gallery:
+
+```sh
+npx @insforge/cli current
+npx @insforge/cli storage buckets
+npx @insforge/cli storage create-bucket profile-photos
+```
+
+The bucket must remain public so anonymous known-key image reads take the storage fast path. Public
+does not make listing or writes public: `storage.objects` RLS keeps lists owner-only and owns
+insert/delete authorization.
+
+Keep the server upload ceiling slightly above the UI's 5 MB limit. Export the current project
+config, set `storage.max_file_size_mb = 8`, review the plan, and apply it:
+
+```sh
+npx @insforge/cli config export --out insforge.toml
+npx @insforge/cli config plan --file insforge.toml
+npx @insforge/cli config apply --file insforge.toml
+```
+
+`config apply` is production-affecting and human-gated. If its output reports
+`storage.max_file_size_mb` in `skipped[]`, stop and upgrade the backend rather than bypassing the
+CLI. After the bucket and config exist, apply `20260721170000_profile-photos` through the normal
+guarded migration workflow, then deploy the updated `people-search` and `connection-inbox`
+functions:
+
+```sh
+npx @insforge/cli functions deploy people-search --file insforge/functions/people-search.ts
+npx @insforge/cli functions deploy connection-inbox --file insforge/functions/connection-inbox.ts
+```
+
+For this release, provision storage and apply the migration before the frontend build starts asking
+PostgREST for `profiles.photos`. Then keep the normal compatibility rule: ship the frontend before
+the two functions, because it safely treats a missing `photoUrls` response field as an empty
+gallery.
+
+Verify with `storage buckets`, upload/reorder/delete from a signed-in browser, and confirm the
+removed object no longer appears in `storage list-objects profile-photos`. Also test a second
+account: a known image URL must render, while that account must not be able to list or delete the
+first account's object.
+
 ## Secrets
 
 Manage with `npx @insforge/cli secrets list` (names only) / `secrets get <key>` / `secrets add` /

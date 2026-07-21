@@ -1,24 +1,16 @@
 import { useState } from "react";
 import type { BreaProfile, ProfileUpdateInput } from "../types";
 import { BreaMark } from "./BreaMark";
+import { PhotoGallery } from "./PhotoGallery";
 import { TagInput } from "./TagInput";
 import { INTEREST_SUGGESTIONS, SKILL_SUGGESTIONS } from "../lib/tagSuggestions";
-
-// Duplicated locally from PersonCard.tsx; consolidating the shared helper is out of scope.
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
 
 export function ProfileSetup({
   profile,
   email,
   onSave,
   onSignOut,
+  onProfileChange,
   mode = "onboarding",
   onCancel,
 }: {
@@ -26,6 +18,7 @@ export function ProfileSetup({
   email: string;
   onSave: (input: ProfileUpdateInput) => Promise<void>;
   onSignOut: () => Promise<void>;
+  onProfileChange: (profile: BreaProfile) => void;
   mode?: "onboarding" | "editing";
   onCancel?: () => void;
 }) {
@@ -48,7 +41,6 @@ export function ProfileSetup({
   const [isLocating, setIsLocating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [avatarFailed, setAvatarFailed] = useState(false);
 
   // A profile can only be discoverable once it has coordinates (enforced by the
   // profiles_discoverable_is_complete DB check). Gate the toggle on this so the
@@ -134,35 +126,15 @@ export function ProfileSetup({
 
         <form onSubmit={(event) => void submit(event)} className="mt-9 grid gap-6 rounded-xl border border-hairline-soft bg-canvas p-6 shadow-card sm:grid-cols-2 sm:p-9">
           <div className="grid gap-3 rounded-xl border border-beige bg-cream-light p-4 sm:col-span-2">
-            <div className="flex items-center gap-4">
-              <div className="shrink-0">
-                {profile.avatarUrl && !avatarFailed ? (
-                  <img
-                    src={profile.avatarUrl}
-                    alt={`${profile.name}'s profile`}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    onError={() => setAvatarFailed(true)}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div
-                    aria-label={`${profile.name}'s initials`}
-                    className="grid h-16 w-16 place-items-center rounded-full bg-cream-deeper text-lg font-semibold text-primary-deep"
-                  >
-                    {initials(profile.name)}
-                  </div>
-                )}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-base font-semibold">Photos</p>
+                <p className="mt-0.5 text-xs text-slate">Signed in as {email}</p>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-base font-semibold">{profile.name}</p>
-                  <span className="rounded-full border border-hairline-soft bg-canvas px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-steel">From LinkedIn</span>
-                </div>
-                <p className="text-sm text-slate">{email}</p>
-              </div>
+              <span className="rounded-full border border-hairline-soft bg-canvas px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-steel">Up to 6</span>
             </div>
-            <p className="text-xs leading-5 text-slate">These came with your sign-in. Your name is editable below; your photo stays synced with LinkedIn.</p>
+            <PhotoGallery profile={profile} onProfileChange={onProfileChange} />
+            <p className="text-xs leading-5 text-slate">Your LinkedIn photo is used until you add one. Photo changes save immediately.</p>
           </div>
           <label className="text-sm font-medium">Name
             <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required className={fieldClass} />

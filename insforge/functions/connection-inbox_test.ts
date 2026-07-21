@@ -4,6 +4,7 @@ import {
   type ConnectionRow,
   handler,
   parseAllowedOrigins,
+  parsePhotoUrls,
   type ProfileRow,
 } from "./connection-inbox.ts";
 
@@ -24,6 +25,7 @@ function person(overrides: Partial<ProfileRow> = {}): ProfileRow {
     id: SENDER_ID,
     name: "Maya Chen",
     avatar_url: null,
+    photos: [],
     headline: "Product designer",
     location_label: "Taipei",
     linkedin_profile_url: "https://www.linkedin.com/in/maya",
@@ -73,6 +75,36 @@ Deno.test("connectionItem projects the person and withholds LinkedIn until accep
   assertEquals(accepted.respondedAt, "2026-07-20T01:00:00.000Z");
   // Once accepted, the connection unlocks the LinkedIn URL.
   assertEquals(accepted.person.linkedinProfileUrl, "https://www.linkedin.com/in/maya");
+});
+
+Deno.test("parsePhotoUrls preserves valid order and ignores malformed gallery data", () => {
+  assertEquals(
+    parsePhotoUrls([
+      { url: "https://example.com/one.jpg", key: "user/one.jpg" },
+      null,
+      { url: "", key: "user/empty.jpg" },
+      { url: "https://example.com/two.jpg", key: "user/two.jpg" },
+    ]),
+    ["https://example.com/one.jpg", "https://example.com/two.jpg"],
+  );
+  assertEquals(parsePhotoUrls(null), []);
+  assertEquals(parsePhotoUrls("photos"), []);
+});
+
+Deno.test("connectionItem prefers the first gallery photo over the LinkedIn avatar", () => {
+  const item = connectionItem(
+    connection(),
+    "incoming",
+    person({
+      avatar_url: "https://linkedin.example/avatar.jpg",
+      photos: [
+        { url: "https://example.com/primary.jpg", key: "user/primary.jpg" },
+        { url: "https://example.com/secondary.jpg", key: "user/secondary.jpg" },
+      ],
+    }),
+  );
+
+  assertEquals(item.person.avatarUrl, "https://example.com/primary.jpg");
 });
 
 Deno.test("buildInbox groups incoming/outgoing and drops rows without a matching person", () => {
