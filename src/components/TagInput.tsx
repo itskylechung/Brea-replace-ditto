@@ -23,10 +23,14 @@ export function TagInput({
   labelChip?: ReactNode;
 }) {
   const [input, setInput] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const listId = useId();
 
   const matches = suggestTags(input, suggestions, value);
-  const isOpen = matches.length > 0;
+  const showList = open && matches.length > 0;
+  const hasActive = showList && activeIndex >= 0 && activeIndex < matches.length;
+  const activeOptionId = hasActive ? `${id}-option-${activeIndex}` : undefined;
 
   function addTag(raw: string) {
     const tag = normalizeTag(raw);
@@ -39,6 +43,13 @@ export function TagInput({
   function commitInput() {
     addTag(input);
     setInput("");
+    setActiveIndex(-1);
+  }
+
+  function selectSuggestion(suggestion: string) {
+    addTag(suggestion);
+    setInput("");
+    setActiveIndex(-1);
   }
 
   function removeTag(index: number) {
@@ -46,7 +57,38 @@ export function TagInput({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter" || event.key === ",") {
+    if (event.key === "ArrowDown") {
+      if (matches.length === 0) return;
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) =>
+        current < 0 || current >= matches.length
+          ? 0
+          : current === matches.length - 1
+            ? 0
+            : current + 1,
+      );
+    } else if (event.key === "ArrowUp") {
+      if (matches.length === 0) return;
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) =>
+        current <= 0 || current >= matches.length ? matches.length - 1 : current - 1,
+      );
+    } else if (event.key === "Escape") {
+      if (showList) {
+        event.preventDefault();
+        setOpen(false);
+        setActiveIndex(-1);
+      }
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (hasActive) {
+        selectSuggestion(matches[activeIndex]);
+      } else {
+        commitInput();
+      }
+    } else if (event.key === ",") {
       event.preventDefault();
       commitInput();
     } else if (event.key === "Backspace" && input === "" && value.length > 0) {
@@ -83,34 +125,43 @@ export function TagInput({
           <input
             id={id}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              setActiveIndex(-1);
+              setOpen(true);
+            }}
             onKeyDown={handleKeyDown}
             placeholder={value.length === 0 ? placeholder : undefined}
             role="combobox"
             aria-autocomplete="list"
-            aria-expanded={isOpen}
-            aria-controls={listId}
+            aria-expanded={showList}
+            aria-controls={showList ? listId : undefined}
+            aria-activedescendant={activeOptionId}
             className="min-w-[8rem] flex-1 bg-transparent px-1 py-1 text-sm font-normal text-ink outline-none placeholder:text-moss/55"
           />
         </div>
-        {isOpen && (
+        {showList && (
           <ul
             id={listId}
+            role="listbox"
             className="absolute z-10 mt-1 w-full overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-card"
           >
-            {matches.map((suggestion) => (
-              <li key={suggestion}>
-                <button
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    addTag(suggestion);
-                    setInput("");
-                  }}
-                  className="block w-full px-3 py-2 text-left text-sm font-normal text-ink transition hover:bg-cream"
-                >
-                  {suggestion}
-                </button>
+            {matches.map((suggestion, index) => (
+              <li
+                key={suggestion}
+                id={`${id}-option-${index}`}
+                role="option"
+                aria-selected={index === activeIndex}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
+                onMouseEnter={() => setActiveIndex(index)}
+                className={`block w-full px-3 py-2 text-left text-sm font-normal text-ink transition${
+                  index === activeIndex ? " bg-cream/70" : ""
+                }`}
+              >
+                {suggestion}
               </li>
             ))}
           </ul>
