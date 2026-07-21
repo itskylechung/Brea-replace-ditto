@@ -2,6 +2,7 @@ import { getInsforgeClient } from "./insforge";
 import type { UserSchema } from "@insforge/sdk";
 import type {
   BreaProfile,
+  ChatMessage,
   ConnectionDecisionResponse,
   ConnectionInboxResponse,
   ConnectionItem,
@@ -198,6 +199,25 @@ function parseInboxResponse(value: unknown): ConnectionInboxResponse {
   };
 }
 
+function parseChatMessage(value: unknown): ChatMessage {
+  if (!isRecord(value)) {
+    throw new Error("The messaging service returned an invalid message.");
+  }
+  return {
+    id: requiredString(value.id, "message id"),
+    senderId: requiredString(valueAt(value, "senderId", "sender_id"), "message sender"),
+    body: requiredString(value.body, "message body"),
+    createdAt: requiredString(valueAt(value, "createdAt", "created_at"), "message time"),
+  };
+}
+
+function parseMessagesResponse(value: unknown): ChatMessage[] {
+  if (!isRecord(value) || !Array.isArray(value.messages)) {
+    throw new Error("The messaging service returned an invalid response.");
+  }
+  return value.messages.map(parseChatMessage);
+}
+
 function parseDecisionResponse(value: unknown): ConnectionDecisionResponse {
   if (!isRecord(value) || (value.status !== "accepted" && value.status !== "declined")) {
     throw new Error("The request service returned an invalid decision.");
@@ -389,6 +409,27 @@ export async function respondToConnection(input: {
   });
   if (error) throw new Error(errorMessage(error, "We could not update this request."));
   return parseDecisionResponse(data);
+}
+
+export async function listChatMessages(connectionId: string): Promise<ChatMessage[]> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>(
+    "connection-messages",
+    { body: { action: "list", connectionId } },
+  );
+  if (error) throw new Error(errorMessage(error, "We could not load this conversation."));
+  return parseMessagesResponse(data);
+}
+
+export async function sendChatMessage(input: {
+  connectionId: string;
+  body: string;
+}): Promise<ChatMessage> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>(
+    "connection-messages",
+    { body: { action: "send", connectionId: input.connectionId, body: input.body } },
+  );
+  if (error) throw new Error(errorMessage(error, "Your message could not be sent."));
+  return parseChatMessage(data);
 }
 
 export async function blockProfile(profileId: string): Promise<void> {
