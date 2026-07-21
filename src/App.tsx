@@ -263,6 +263,8 @@ function DiscoveryApp({
   const [pendingSearch, setPendingSearch] = useState<{ query: string; radiusKm: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
+  const [discoveryNudge, setDiscoveryNudge] = useState<"hidden" | "visible" | "saving">("hidden");
+  const [nudgeError, setNudgeError] = useState<string | null>(null);
   const resultsSectionRef = useRef<HTMLElement>(null);
 
   // Coordinates are deferred from onboarding, so a profile can reach discovery
@@ -360,6 +362,12 @@ function DiscoveryApp({
             setPendingSearch(null);
             setIsLocating(false);
             await executeSearch(target.query, target.radiusKm);
+            // A deferred-location profile is saved non-discoverable; now that it
+            // is eligible, offer a one-tap opt-in. profile.isDiscoverable is the
+            // pre-save value — the location save never flips it.
+            if (profile.isDiscoverable === false) {
+              setDiscoveryNudge("visible");
+            }
           } catch (error) {
             setLocateError(readableError(error, "We could not save your location. Please try again."));
             setIsLocating(false);
@@ -372,6 +380,18 @@ function DiscoveryApp({
       },
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
     );
+  }
+
+  async function enableDiscovery() {
+    setDiscoveryNudge("saving");
+    setNudgeError(null);
+    try {
+      await onSaveProfile(profileToUpdateInput(profile, { isDiscoverable: true }));
+      setDiscoveryNudge("hidden");
+    } catch (error) {
+      setDiscoveryNudge("visible");
+      setNudgeError(readableError(error, "We could not update your profile. Please try again."));
+    }
   }
 
   async function connectWith(person: PersonMatch) {
@@ -586,6 +606,43 @@ function DiscoveryApp({
             aria-live="polite"
             aria-busy={isLoading}
           >
+            {discoveryNudge !== "hidden" && (
+              <div
+                role="status"
+                className="mb-5 flex flex-col gap-3 rounded-xl border border-beige bg-cream-light px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-ink">You can now appear in discovery.</p>
+                  <p className="text-sm text-steel">
+                    Turn it on so nearby members can find you — you can change this any time in your
+                    profile.
+                  </p>
+                  {nudgeError && (
+                    <p role="alert" className="text-xs font-medium text-signal">
+                      {nudgeError}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void enableDiscovery()}
+                    disabled={discoveryNudge === "saving"}
+                    className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition hover:bg-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {discoveryNudge === "saving" ? "Turning on…" : "Turn on discovery"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryNudge("hidden")}
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-steel transition hover:text-ink"
+                  >
+                    Not now
+                  </button>
+                </div>
+              </div>
+            )}
+
             {pendingSearch && needsLocation && (
               <div className="rounded-xl border border-beige bg-cream-light px-6 py-12 text-center">
                 <h2 className="font-editorial text-3xl font-normal tracking-[-0.02em] text-ink">
