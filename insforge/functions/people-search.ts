@@ -3,7 +3,10 @@ import { createAdminClient, createClient } from "npm:@insforge/sdk@1.4.5";
 const EARTH_RADIUS_KM = 6371.0088;
 const EXACT_PHRASE_BONUS = 8;
 export const EMBEDDING_MODEL = "nvidia/nemotron-3-embed-1b:free";
-export const SEMANTIC_MIN_SCORE = 0.2;
+// Calibrated for nemotron-3-embed via deno task eval (relevant pairs scored 0.073..0.468,
+// irrelevant 0.014..0.263 — ranges overlap, so this only filters absolute junk and the
+// cosine sort does the real work). Re-run the eval if EMBEDDING_MODEL changes.
+export const SEMANTIC_MIN_SCORE = 0.05;
 const SEMANTIC_MATCH_REASON = "Close match for your search.";
 const MIN_QUERY_LENGTH = 2;
 const MAX_QUERY_LENGTH = 200;
