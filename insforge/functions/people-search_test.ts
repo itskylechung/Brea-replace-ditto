@@ -3,11 +3,15 @@ import {
   buildConnectionStatuses,
   collectBlockedProfileIds,
   compareRankedProfiles,
+  cosineSimilarity,
   handler,
   haversineKm,
   normalizeQuery,
+  profileEmbeddingText,
   type ProfileRow,
   rankProfile,
+  rankProfileSemantic,
+  SEMANTIC_MIN_SCORE,
   validateSearchInput,
 } from "./people-search.ts";
 
@@ -100,6 +104,34 @@ Deno.test("rankProfile uses the strongest matching field for its reason", () => 
 
 Deno.test("rankProfile excludes candidates with no positive match", () => {
   assertEquals(rankProfile(profile(), "ceramics", 1), null);
+});
+
+Deno.test("cosineSimilarity handles identical, orthogonal, empty, and mismatched vectors", () => {
+  assert(Math.abs(cosineSimilarity([1, 2, 3], [1, 2, 3]) - 1) < 1e-12);
+  assertEquals(cosineSimilarity([1, 0], [0, 1]), 0);
+  assertEquals(cosineSimilarity([], []), 0);
+  assertEquals(cosineSimilarity([1, 2], [1, 2, 3]), 0);
+  assertEquals(cosineSimilarity([0, 0], [1, 2]), 0);
+});
+
+Deno.test("profileEmbeddingText joins searchable fields and drops empty ones", () => {
+  assertEquals(
+    profileEmbeddingText(profile({ availability: null, bio: null })),
+    "Product designer\nproduct design, prototyping\nhiking, coffee",
+  );
+});
+
+Deno.test("rankProfileSemantic applies the similarity threshold and keyword-based reasons", () => {
+  assertEquals(rankProfileSemantic(profile(), "hiking", 2, SEMANTIC_MIN_SCORE - 0.01), null);
+
+  const keywordBacked = rankProfileSemantic(profile(), "hiking", 2, 0.9);
+  assert(keywordBacked);
+  assertEquals(keywordBacked.score, 0.9);
+  assertEquals(keywordBacked.matchReason, "Matches interest: hiking.");
+
+  const semanticOnly = rankProfileSemantic(profile(), "outdoorsy adventures", 2, 0.5);
+  assert(semanticOnly);
+  assertEquals(semanticOnly.matchReason, "Close match for your search.");
 });
 
 Deno.test("compareRankedProfiles sorts by relevance, distance, name, then id", () => {
