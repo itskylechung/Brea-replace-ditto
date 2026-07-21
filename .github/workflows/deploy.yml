@@ -27,8 +27,10 @@ env:
   VERCEL_ORG_ID: team_AsxeTZXp7lznFDHlzyM6SiMA
   VERCEL_PROJECT_ID: prj_o703rEVpuDhQAULkr9zPExnCH86L
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  VITE_INSFORGE_URL: https://35byng5f.ap-southeast.insforge.app
-  VITE_INSFORGE_FUNCTIONS_URL: https://35byng5f.function2.insforge.app
+  # VITE_INSFORGE_URL / VITE_INSFORGE_FUNCTIONS_URL are intentionally unset:
+  # the app then targets the page origin and the vercel.json rewrites proxy
+  # /api and /fn to InsForge, keeping the auth refresh cookie first-party
+  # (Safari/ITP blocks it as third-party otherwise — issue #24).
   VITE_INSFORGE_ANON_KEY: anon_9d644360a838c6663e52dcb41550c5df93ffd0b7613e2f8b493d39b3ccf037a0
 
 jobs:
