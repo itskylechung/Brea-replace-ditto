@@ -1,23 +1,16 @@
 # HANDOFF
 
-Working handoff for Brea. Written 2026-07-21 at the end of the M1/M2 delivery session; read this first when picking the project up on a new machine. This file supersedes an earlier uncommitted `HANDOFF.md` that lived only on the original development machine — that file has since been recovered and its unique operational content is merged into the "Ops notes" and "E2E test accounts" sections below (triage summaries also live in the runbook's Triage and Secrets sections). Credentials never live in this file; see "E2E test accounts" for how to retrieve them.
+Working handoff for Brea. Written 2026-07-21 at the end of the M1/M2 delivery session; refreshed the same evening after the session-persistence fix (PR #64) and the verification/hygiene sweep (issues #4, #12, #24, #27, #29, #47 closed). Read this first when picking the project up on a new machine. This file supersedes an earlier uncommitted `HANDOFF.md` that lived only on the original development machine — that file has since been recovered and its unique operational content is merged into the "Ops notes" and "E2E test accounts" sections below (triage summaries also live in the runbook's Triage and Secrets sections). Credentials never live in this file; see "E2E test accounts" for how to retrieve them.
 
 ## State of the product
 
-Frontend: Vite + React 19 SPA, no router (state-machine screens in `src/App.tsx`). Backend: InsForge project `brea-mvp-preview` — **still serving production** (`brea-replace-ditto.vercel.app`); every backend change is production-affecting until OPS-02 (#26) lands. Deploys run through GitHub Actions (`.github/workflows/deploy.yml`); the only CI secret is `VERCEL_TOKEN`; the `VITE_*` client config is intentionally inlined in that workflow (public values).
+Frontend: Vite + React 19 SPA, no router (state-machine screens in `src/App.tsx`). Backend: InsForge project `brea-mvp-preview` — **still serving production** (`brea-replace-ditto.vercel.app`); every backend change is production-affecting until OPS-02 (#26) lands.
 
-Milestones live on GitHub (M1 First-run experience / M2 Product surface / M3 Profile intelligence) with a parallel platform track (Epic F stability gate: QA-01 #24, OPS-01 #23, INT-01 #12, BE-04 #4; Epic G environment split: OPS-02 #26).
+**The browser only ever talks to the page's own origin** (PR #64): `vercel.json` rewrites proxy `/api/*` and `/fn/*` to InsForge server-side, and the client defaults its base URLs to `window.location.origin`. This keeps the auth refresh cookie **first-party** — do not reintroduce direct cross-origin backend URLs in client config; Safari/ITP and incognito windows kill sessions on every reload with them (see Ops notes).
 
-## Merge queue (as of writing)
+Deploys run through GitHub Actions (`.github/workflows/deploy.yml`); the only CI secret is `VERCEL_TOKEN`; only `VITE_INSFORGE_ANON_KEY` is inlined (public value) — the `VITE_*` URLs are intentionally unset.
 
-| PR | Contents | State / order |
-|----|----------|---------------|
-| #54 | M1 batch — FE-06..FE-09, OPS-05 (#41–#45) | **Merged** |
-| #55 | FE-13 discovery nudge (#52) | Open — **merge first** |
-| #56 | FE-14 TagInput combobox ARIA (#53) | Open — independent, merge any time |
-| #57 | M2 — profile tab FE-10 (#46), requests badge FE-11 (#47), vitest scope chore | Open — **stacked on #55**; retargets to main automatically after #55 merges |
-
-After #54 merged: fill the baseline table in `docs/METRICS.md` (it says "fill the day the M1 PR merges" — that day is now).
+Milestones live on GitHub (M1 First-run experience / M2 Product surface / M3 Profile intelligence). The Epic F stability gate cleared on 2026-07-21: QA-01 #24, INT-01 #12, BE-04 #4 all closed with evidence (`docs/verification/2026-07-21-core-loop-verification.md`); OPS-01 #23 is reported and awaiting InsForge. Environment split (Epic G) remains OPS-02 #26. The merge queue is empty and `docs/METRICS.md` carries the frozen M1 baseline (dev/E2E-era numbers — later deltas are what matter).
 
 ## Decision log (the why, not just the what)
 
@@ -28,25 +21,26 @@ After #54 merged: fill the baseline table in `docs/METRICS.md` (it says "fill th
 5. **"Paste LinkedIn text" profile import was dropped** in favor of suggestion chips (FE-08/#43). LinkedIn URL scraping is off the table permanently: product promise ("Brea does not scrape LinkedIn"), LinkedIn ToS, and technical walls (auth-walled, CORS). Richer import v2 = AI-assisted drafting via InsForge AI gateway, gated by OPS-02 (BE-06/#50).
 6. **Notifications are no longer out of scope** — Epic H approved as a PRD change: transactional email on request-received / request-accepted (BE-05/#49, blocked by OPS-02). Rationale: without any signal, the core loop gives members no reason to return; the badge (FE-11) is the interim loop-closure.
 7. **LinkedIn OIDC provides only name/email/photo.** All "auto-fill from LinkedIn" work is bounded by that; the identity block (FE-06) makes the three items visible rather than pretending more exists.
+8. **Session persistence: same-origin proxy now, custom domain later** (#24 → PR #64). Real-browser testing showed the cross-site refresh cookie is blocked by Safari/ITP and incognito — sessions died on every reload. Interim fix (live): proxy `/api` + `/fn` through the page origin. Long-term posture stays with the OPS-02 custom domain (`app.` + `api.` under one registrable domain), at which point the proxy's latency/bandwidth trade-off can be retired. Sibling `*.vercel.app` subdomains can never work — `vercel.app` is on the Public Suffix List.
 
 ## What's next (priority order)
 
-1. Merge queue above; fill METRICS baseline.
-2. **QA-01 (#24, P0):** verify iPhone Safari session persistence — the "returning users land in the main screen" promise is unproven on mobile Safari (ITP risk). Gates inviting testers, alongside OPS-01/INT-01/BE-04 and the safety-ops loop (OPS-06/#51).
-3. **OPS-02 (#26):** stand up the real production InsForge project — unblocks BE-05 (email), BE-06 (AI drafting), and OPS-06 alert automation.
+1. **OPS-01 (#23, waiting):** reported to InsForge, awaiting reply. When following up, attach the newer log-fetch anomaly (see Ops notes: `postgres.logs`/`postgrest.logs` 504 at high limits).
+2. **OPS-06 (#51, P1):** safety ops loop. The weekly-review runbook and report queries are buildable now; only the alert automation waits on OPS-02 (email).
+3. **OPS-02 (#26):** stand up the real production InsForge project + custom domain — unblocks BE-05 (#49 email), BE-06 (#50 AI drafting), OPS-06 automation, and retires the proxy trade-off (Decision 8).
 4. M3 / Epic E v2 and Epic D (router) per the roadmap: router should land **before any fourth main screen** ships (FE-12/#48).
-5. Hygiene batch #29 (now includes M2 review's cleanup candidates: shared `initials()`, extract+test the badge predicate).
+5. Deferred micro-check: real-device geolocation prompt on a location-less profile — verify naturally during the next new tester's first run (noted on #12's close).
 
 ## New machine setup
 
 ```bash
 git clone https://github.com/itskylechung/Brea-replace-ditto.git && cd Brea-replace-ditto
 npm ci                        # Node 22 required (CI uses 22)
-cp .env.example .env.local    # then fill the three VITE_ values
+cp .env.example .env.local    # fill VITE_INSFORGE_ANON_KEY only
 npm run dev
 ```
 
-The three `VITE_*` values are public client config; current values are inlined in `.github/workflows/deploy.yml` (lines under `env:`) — copy them from there. Checks: `npm run typecheck && npm run lint && npm run build && npm run test`.
+Only `VITE_INSFORGE_ANON_KEY` is needed (public value — copy it from `.github/workflows/deploy.yml` under `env:`). Leave the `VITE_*` URLs empty: the client then targets the page origin, and the Vite dev proxy (mirroring the `vercel.json` rewrites) forwards `/api` and `/fn` to InsForge with first-party cookies. Checks: `npm run typecheck && npm run lint && npm run build && npm run test`.
 
 Not in git (per-machine, set up only when needed):
 - **Vercel CLI**: `vercel login`, then `vercel link` (org `team_AsxeTZXp7lznFDHlzyM6SiMA`, project `prj_o703rEVpuDhQAULkr9zPExnCH86L`). Not required to ship — deploys are CI-driven.
@@ -71,6 +65,9 @@ Triage summaries (refresh hang, zombie-socket stall, incognito quick-triage) and
 - **Agent permission gates.** When driving this repo with a coding agent in auto mode, these operations require a human to run them (`! <cmd>` in Claude Code): `db migrations up`, `projects update-version`, `secrets add/update/get`, sometimes `gh pr merge`. Function deploys, admin REST data CRUD, and read-only queries are not gated.
 - **Vercel sensitive-env trap (2026-07-20).** The project enforces a Sensitive-variables policy on Production/Preview env vars; sensitive values are undecryptable outside Vercel's own builds — external CI's `vercel pull` receives literal `[SENSITIVE]` placeholders (the first automated deploy shipped a config-less bundle this way). The `VITE_*` client config is therefore inlined in `.github/workflows/deploy.yml` (public-by-design values) with a strip step for the placeholders. Repoint them at OPS-02 cutover.
 - **Rollback pauses production auto-assignment (2026-07-20).** After `vercel rollback`, new production deploys build but do NOT take the alias until `vercel promote <deployment-url>` (or dashboard resume). If a merge "deploys green but prod doesn't change", check `vercel inspect brea-replace-ditto.vercel.app` vs `vercel ls` and promote.
+- **Playwright passes are NOT session-persistence evidence (2026-07-21).** Playwright's Chromium ships without tracking protections, so it happily stored the cross-site refresh cookie that real Safari/ITP and incognito windows block — automated E2E said "sessions persist" while every real iPhone logged out on reopen. Verify cookie-dependent behavior on real devices, or at minimum assert the cookie's storage domain is the page origin (first-party by construction).
+- **Preview deploys: functions 403, and SSO-protected (2026-07-21).** `BREA_ALLOWED_ORIGINS` is an exact-match list that has never contained the per-PR preview origins, so `/fn/*` calls return 403 on previews (auth/profile paths work fine) — pre-existing behavior, not a proxy regression. Also, preview URLs sit behind Vercel deployment protection; for automated browser testing mint a share link (`_vercel_share`, e.g. via the Vercel MCP `get_access_to_vercel_url`).
+- **Log fetches 504 at high limits (2026-07-21).** `cli logs postgres.logs` / `postgrest.logs` return `OSS request failed: 504` (or time out) at `--limit` ≥ ~200 but succeed at ≤ ~60 — gateway-timeout-on-large-fetch, adjacent to the zombie-socket fingerprint. Use small limits; attach this to the OPS-01 (#23) thread when InsForge replies.
 
 ## E2E test accounts
 
