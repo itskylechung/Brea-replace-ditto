@@ -7,12 +7,11 @@ the deployed InsForge functions; there are no invented columns or events.
 
 ## How to run
 
-Run each query in the **InsForge dashboard SQL editor**, against the parent
-project **`brea-mvp-preview`** (project id
+Run each query in the **InsForge dashboard SQL editor**, or via
+`npx @insforge/cli db query "<sql>"`, against the parent project
+**`brea-mvp-preview`** (project id
 `135081c0-d4dc-4d4d-b7ff-c4e94b4997e5`), which currently serves both preview and
-production. `insforge/BACKEND_RUNBOOK.md` documents no CLI verb for ad-hoc SQL
-(the `db migrations` commands apply migrations, not `SELECT`s), so the dashboard
-editor is the supported path.
+production.
 
 Event vocabulary (every value is enforced by the `product_events.event_name`
 CHECK constraint in `migrations/20260719073000_authenticated-connection-lifecycle.sql`):
@@ -116,17 +115,26 @@ WHERE event_name = 'search_completed'
 Whoever ships M1: run queries (a)-(e) the day the M1 PR merges and paste each
 result into the empty column below. This is the frozen M1 baseline.
 
-| Metric                              | Query | value @ M1 ship |
-| ----------------------------------- | ----- | --------------- |
-| Signed-in profiles                  | (a)   |                 |
-| Completed profiles                  | (b)   |                 |
-| Profile completion rate %           | (b)   |                 |
-| Searching profiles                  | (c)   |                 |
-| Search rate %                       | (c)   |                 |
-| Connection requests created         | (d)   |                 |
-| Connections accepted                | (d)   |                 |
-| Acceptance rate %                   | (d)   |                 |
-| 7-day active searchers              | (e)   |                 |
+| Metric                              | Query | value @ M1 ship            |
+| ----------------------------------- | ----- | -------------------------- |
+| Signed-in profiles                  | (a)   | 1                          |
+| Completed profiles                  | (b)   | 0                          |
+| Profile completion rate %           | (b)   | 0.0                        |
+| Searching profiles                  | (c)   | 1                          |
+| Search rate %                       | (c)   | n/a (0 completed profiles) |
+| Connection requests created         | (d)   | 3                          |
+| Connections accepted                | (d)   | 1                          |
+| Acceptance rate %                   | (d)   | 100.0                      |
+| 7-day active searchers              | (e)   | 1                          |
+
+Snapshot taken 2026-07-21 via `db query` (M1 merged 2026-07-20). All traffic to
+date is developer/E2E activity, so this baseline is effectively "zero real
+users" — later deltas are what matter. Reading notes: searching profiles (1)
+exceeds completed profiles (0) because the E2E fixture accounts are provisioned
+through the admin API and never fire the client-side `profile_completed` event;
+the developer account's 5 `sign_in_completed` events likewise predate a
+completed client funnel. The 100% acceptance rate is one accepted E2E fixture
+connection over two still-pending requests.
 
 ## Known gaps
 
