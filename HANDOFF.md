@@ -1,6 +1,6 @@
 # HANDOFF
 
-Working handoff for Brea. Written 2026-07-21 at the end of the M1/M2 delivery session; read this first when picking the project up on a new machine. This file supersedes an earlier `HANDOFF.md` that was referenced by `insforge/BACKEND_RUNBOOK.md` but never committed (it existed only on the original development machine and is unrecoverable); the surviving operational content lives in the runbook's own Triage and Secrets sections.
+Working handoff for Brea. Written 2026-07-21 at the end of the M1/M2 delivery session; read this first when picking the project up on a new machine. This file supersedes an earlier uncommitted `HANDOFF.md` that lived only on the original development machine — that file has since been recovered and its unique operational content is merged into the "Ops notes" and "E2E test accounts" sections below (triage summaries also live in the runbook's Triage and Secrets sections). Credentials never live in this file; see "E2E test accounts" for how to retrieve them.
 
 ## State of the product
 
@@ -53,6 +53,7 @@ Not in git (per-machine, set up only when needed):
 - **InsForge CLI**: needed for any backend operation (functions deploy, migrations, secrets). `npx @insforge/cli` + link to `brea-mvp-preview` (project id in `insforge/BACKEND_RUNBOOK.md`). Migrations/secrets updates are human-gated — see the runbook.
 - **Deno**: only for `deno task --config insforge/deno.json check` (function typechecks, TEST-01).
 - **InsForge agent skills** (per `AGENTS.md`): installed into gitignored agent dirs; reinstall from InsForge tooling if you use coding agents for backend work.
+- **E2E credentials**: stored in the `BREA_E2E_CREDENTIALS` InsForge secret — see "E2E test accounts" below.
 
 ## Process notes (how this codebase is being built)
 
@@ -62,4 +63,28 @@ Not in git (per-machine, set up only when needed):
 
 ## Ops notes
 
-Triage fingerprints (refresh hang, zombie-socket stall, incognito quick-triage) and the `BREA_ALLOWED_ORIGINS` `KEY =` corruption gotcha are documented in `insforge/BACKEND_RUNBOOK.md` — that is the authoritative ops reference. Zombie-socket reporting to InsForge is tracked as OPS-01 (#23).
+Triage summaries (refresh hang, zombie-socket stall, incognito quick-triage) and the `BREA_ALLOWED_ORIGINS` `KEY =` corruption gotcha live in `insforge/BACKEND_RUNBOOK.md` — that is the day-to-day ops reference. The full fingerprints and gotchas recovered from the original machine's handoff, which the runbook points at, are these:
+
+- **Zombie-socket stall — full fingerprint (2026-07-20).** Browser requests hang ≥15s and never appear in `insforge.logs`, while completed requests are 1–300ms and CPU / DB / metrics are all green; the SDK surfaces `Request timed out after 15000ms`. InsForge's `diagnose --ai` attributes it to a keep-alive idle-timeout race: the LB reuses a half-closed connection, Express never fires the `request` event, and because logging hangs off `res.on('finish')` the stalled requests are invisible. Evidence pattern: a page load's public-config completes while its refresh only reaches the server ~13–15s later via SDK retry. Reporting tracked as OPS-01 (#23).
+- **`diagnose --ai` cited internals** (specific `server.ts` lines, the `KEEP_ALIVE_TIMEOUT_MS` env) that are unverifiable from outside — treat as hypothesis until InsForge confirms (OPS-01 ask #3).
+- **`projects update-version` no-ops when already on the latest version.** There is currently no self-serve force-restart in that case; if a persistent wedge recurs, contact InsForge (asked in OPS-01).
+- **Agent permission gates.** When driving this repo with a coding agent in auto mode, these operations require a human to run them (`! <cmd>` in Claude Code): `db migrations up`, `projects update-version`, `secrets add/update/get`, sometimes `gh pr merge`. Function deploys, admin REST data CRUD, and read-only queries are not gated.
+- **Vercel sensitive-env trap (2026-07-20).** The project enforces a Sensitive-variables policy on Production/Preview env vars; sensitive values are undecryptable outside Vercel's own builds — external CI's `vercel pull` receives literal `[SENSITIVE]` placeholders (the first automated deploy shipped a config-less bundle this way). The `VITE_*` client config is therefore inlined in `.github/workflows/deploy.yml` (public-by-design values) with a strip step for the placeholders. Repoint them at OPS-02 cutover.
+- **Rollback pauses production auto-assignment (2026-07-20).** After `vercel rollback`, new production deploys build but do NOT take the alias until `vercel promote <deployment-url>` (or dashboard resume). If a merge "deploys green but prod doesn't change", check `vercel inspect brea-replace-ditto.vercel.app` vs `vercel ls` and promote.
+
+## E2E test accounts
+
+Two fixture accounts — "dora" and "eli", recreated 2026-07-20 after the credential exposure on issues #12/#4 — live in the Preview DB with completed Taipei profiles and one accepted connection between them. Decision recorded under CHORE-01: keep them (they were essential to the 2026-07-20 diagnosis). The former alice/bob/charlie accounts were deleted outright and verified dead (401).
+
+**Credentials are not in this repo.** They live in the InsForge project secret `BREA_E2E_CREDENTIALS` (JSON with email + password per account). To retrieve them on any machine:
+
+```bash
+npx @insforge/cli login          # or: login --user-api-key <key> (dashboard → Profile → API Keys)
+npx @insforge/cli link           # select brea-mvp-preview
+npx @insforge/cli secrets get BREA_E2E_CREDENTIALS
+```
+
+`secrets get` is human-gated in agent auto mode — run it yourself. Never post the values to issues, PRs, or commits.
+
+- **Driving an authenticated browser session in tests:** InsForge SDK sessions are in-memory + HttpOnly refresh cookie (no localStorage). `POST /api/auth/sessions` via `fetch` with `credentials: "include"`, then write the response's `csrfToken` into a `insforge_csrf_token` cookie, then reload.
+- **Rotation is cheap** if exposure is ever suspected: delete the users via SQL (`DELETE FROM auth.users WHERE email IN (…)` — cascades cleanly: profiles CASCADE → connections/blocks CASCADE, product_events SET NULL; there is no admin update/delete HTTP route), recreate via admin `POST /api/auth/users` with `autoConfirm: true`, rebuild the profile + connection fixture, then update the secret.
