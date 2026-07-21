@@ -18,6 +18,7 @@
 > **Amendments to this contract**
 >
 > - 2026-07-20 — FE-07 (#42): geolocation moved from onboarding requirement to first-search prompt. Discovery defaults are location-gated; a member who defers location stays non-discoverable until they enable discovery after adding a location. The first-search flow offers a one-tap prompt to enable it (FE-13, #52).
+> - 2026-07-21 — §19 Roadmap restructured around the "LinkedIn for dating life" product direction (feature map filed as issues #66–#75, milestone M4). The shipped contract is unchanged. Note: a social feed (#71) would reverse the §3 JTBD promise ("without browsing a generic social feed") and therefore requires a v3 contract re-freeze before it ships; events (#70) extend the existing core and do not.
 
 ## 1. Product Summary
 
@@ -443,16 +444,47 @@ re-rank or recompute distance.
 
 ## 19. Roadmap (not yet shipped)
 
-Aspirational; none of the following is built in this release:
+Aspirational; none of the following is built in this release. Restructured 2026-07-21 around the
+product direction "LinkedIn for dating life": the LinkedIn-style identity, discovery, and
+connection loop already shipped; the roadmap extends it toward events, content, and community.
+The full LinkedIn→dating feature map lives in issues #66–#75.
 
-1. Chat or real-time messaging between connected members.
-2. Notifications (email or push) for requests and acceptances.
-3. A moderation / admin console over stored `profile_reports` and `profile_blocks`.
-4. Semantic / vector search and ranking evaluation (current ranking is deterministic keyword matching).
-5. AI-assisted profile enrichment with explicit consent.
-6. Finer location-precision and consent controls beyond the current private-origin model.
-7. A separate, dedicated Production InsForge project (the live site currently runs on the Preview
-   backend) with re-verified deny-by-default RLS.
-8. The location-based Share Marketplace as a separate validated workflow.
-9. Dedicated per-code UI for the Connect 409 conflicts (today the backend `message` is surfaced
-   generically).
+### P1 — close the core loop
+
+1. Chat / messaging between connected members (#66) — today the loop dead-ends at "accepted".
+2. Notifications: transactional email on request received / accepted (BE-05, #49).
+3. Multi-photo profile gallery (#67) — the single LinkedIn OIDC photo is not enough for a dating
+   product.
+4. Moderation / admin console over `profile_reports` and `profile_blocks` (#68) — hard
+   prerequisite for any user-generated-content surface below.
+5. Semantic / vector search and ranking evaluation (#69) — current ranking is deterministic
+   keyword matching.
+6. AI-assisted profile enrichment with explicit consent (BE-06, #50).
+
+### P2 — events & content (milestone M4)
+
+7. **Events** (#70): dating/singles events by profession or interest, with RSVP and a
+   privacy-gated attendee list as a new discovery surface. Extends the §1 core ("find suitable
+   people nearby") — first among the new surfaces. Requires client-side routing (FE-12, #48)
+   and the moderation console (#68) first.
+8. **Feed** (#71): posts about dating life, reactions, comments. ⚠️ Reverses the §3 JTBD promise
+   ("without browsing a generic social feed") — ships only behind a v3 contract re-freeze, and
+   after events give members something to post about.
+9. Vouches: character endorsements from friends (#72).
+10. Passive discovery suggestions without composing a search (#73).
+11. Profile verification badge (#74).
+
+### P3 — later (single tracker: #75)
+
+Influencer/creator tools, groups, polls, newsletters, organizer pages, who-viewed-you, premium
+tier, promoted events, post-date testimonials.
+
+### Platform debts (priority independent)
+
+12. A separate, dedicated Production InsForge project (the live site currently runs on the Preview
+    backend) with re-verified deny-by-default RLS (OPS-02, #26) — blocks #49, #50, and safety-ops
+    automation (#51).
+13. Finer location-precision and consent controls beyond the current private-origin model.
+14. The location-based Share Marketplace as a separate validated workflow.
+15. Dedicated per-code UI for the Connect 409 conflicts (today the backend `message` is surfaced
+    generically).
