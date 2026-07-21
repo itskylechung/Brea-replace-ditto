@@ -13,6 +13,7 @@ import {
   type ProfileRow,
   rankProfile,
   rankProfileSemantic,
+  SEMANTIC_MIN_SCORE,
 } from "../functions/people-search.ts";
 
 const RECALL_AT = 3;
@@ -147,9 +148,16 @@ if (!apiKey) {
 const profileVectors = await embedTexts(apiKey, PROFILES.map(profileEmbeddingText));
 const queryVectors = await embedTexts(apiKey, QUERIES.map(({ query }) => query));
 
-const semanticRankings = QUERIES.map(({ query }, queryIndex) =>
+// Collected across all query/profile pairs so a new model's similarity spread is
+// visible when calibrating SEMANTIC_MIN_SCORE.
+const relevantSimilarities: number[] = [];
+const irrelevantSimilarities: number[] = [];
+
+const semanticRankings = QUERIES.map(({ query, relevant }, queryIndex) =>
   PROFILES.flatMap((profile, profileIndex) => {
     const similarity = cosineSimilarity(queryVectors[queryIndex], profileVectors[profileIndex]);
+    (relevant.includes(profile.id) ? relevantSimilarities : irrelevantSimilarities)
+      .push(similarity);
     const match = rankProfileSemantic(profile, query, 0, similarity);
     return match ? [match] : [];
   }).sort(compareRankedProfiles).map((match) => match.profile.id)
@@ -176,6 +184,17 @@ console.log(
   }`,
 );
 console.log(`MRR       semantic ${semantic.mrr.toFixed(2)} | keyword ${keyword.mrr.toFixed(2)}`);
+
+const range = (values: number[]) =>
+  `${Math.min(...values).toFixed(3)}..${Math.max(...values).toFixed(3)}`;
+console.log(
+  `similarity ranges: relevant ${range(relevantSimilarities)} | irrelevant ${
+    range(irrelevantSimilarities)
+  } | threshold ${SEMANTIC_MIN_SCORE}`,
+);
+if (Math.min(...relevantSimilarities) < SEMANTIC_MIN_SCORE) {
+  console.warn("WARN: some relevant pairs score below SEMANTIC_MIN_SCORE — threshold too high.");
+}
 
 if (semantic.recall < MIN_RECALL || semantic.mrr < MIN_MRR) {
   console.error(

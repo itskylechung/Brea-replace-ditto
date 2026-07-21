@@ -2,7 +2,7 @@ import { createAdminClient, createClient } from "npm:@insforge/sdk@1.4.5";
 
 const EARTH_RADIUS_KM = 6371.0088;
 const EXACT_PHRASE_BONUS = 8;
-export const EMBEDDING_MODEL = "openai/text-embedding-3-small";
+export const EMBEDDING_MODEL = "nvidia/nemotron-3-embed-1b:free";
 export const SEMANTIC_MIN_SCORE = 0.2;
 const SEMANTIC_MATCH_REASON = "Close match for your search.";
 const MIN_QUERY_LENGTH = 2;
