@@ -98,25 +98,25 @@ export function TagInput({
   }
 
   return (
-    <div className="text-sm font-bold">
+    <div className="text-sm font-medium">
       <label htmlFor={id}>
         {label}
-        {hint && <span className="font-normal text-moss"> {hint}</span>}
+        {hint && <span className="font-normal text-slate"> {hint}</span>}
         {labelChip}
       </label>
       <div className="relative">
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-2xl border border-ink/10 bg-white/80 px-3 py-2 transition focus-within:border-forest/45 focus-within:ring-2 focus-within:ring-forest/10">
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-hairline-strong bg-canvas px-3 py-2 transition focus-within:border-ink focus-within:ring-2 focus-within:ring-ink/10">
           {value.map((tag, index) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-forest/15 px-2.5 py-1 text-xs font-bold text-ink"
+              className="inline-flex items-center gap-1 rounded-full border border-hairline-soft bg-cream-light px-2.5 py-1 text-xs font-medium text-ink"
             >
               {tag}
               <button
                 type="button"
                 onClick={() => removeTag(index)}
                 aria-label={`Remove ${tag}`}
-                className="leading-none text-moss transition hover:text-ink"
+                className="leading-none text-steel transition hover:text-ink"
               >
                 &times;
               </button>
@@ -137,14 +137,14 @@ export function TagInput({
             aria-expanded={showList}
             aria-controls={showList ? listId : undefined}
             aria-activedescendant={activeOptionId}
-            className="min-w-[8rem] flex-1 bg-transparent px-1 py-1 text-sm font-normal text-ink outline-none placeholder:text-moss/55"
+            className="min-w-[8rem] flex-1 bg-transparent px-1 py-1 text-sm font-normal text-ink outline-none placeholder:text-stone"
           />
         </div>
         {showList && (
           <ul
             id={listId}
             role="listbox"
-            className="absolute z-10 mt-1 w-full overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-card"
+            className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-hairline-soft bg-canvas shadow-card"
           >
             {matches.map((suggestion, index) => (
               <li
@@ -158,7 +158,7 @@ export function TagInput({
                 }}
                 onMouseEnter={() => setActiveIndex(index)}
                 className={`block w-full px-3 py-2 text-left text-sm font-normal text-ink transition${
-                  index === activeIndex ? " bg-cream/70" : ""
+                  index === activeIndex ? " bg-cream-light" : ""
                 }`}
               >
                 {suggestion}

@@ -35,12 +35,6 @@ export default {
         "on-dark-muted": "#a8a8a8",
         signal: "#b42318",
         success: "#287a4b",
-        // Compatibility aliases for the authenticated onboarding screens added by PR #17.
-        forest: "#1f1f1f",
-        moss: "#4a4a4a",
-        paper: "#ffffff",
-        coral: "#fa520f",
-        sun: "#ffb83e",
       },
       boxShadow: {
         subtle: "0 1px 2px rgba(0, 0, 0, 0.04)",
