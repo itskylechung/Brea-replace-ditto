@@ -9,6 +9,10 @@
     {
       "source": "/fn/:path*",
       "destination": "https://35byng5f.function2.insforge.app/:path*"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
     }
   ]
 }

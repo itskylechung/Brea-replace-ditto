@@ -414,6 +414,84 @@ export async function reportProfile(input: {
   if (error) throw new Error(errorMessage(error, "We could not submit your report."));
 }
 
+export type ModerationProfile = {
+  id: string;
+  name: string;
+  headline: string | null;
+  isDiscoverable: boolean;
+};
+
+export type ModerationReport = {
+  id: string;
+  reason: string;
+  details: string | null;
+  createdAt: string;
+  reporter: ModerationProfile | null;
+  reported: ModerationProfile | null;
+};
+
+export type ModerationBlock = {
+  id: string;
+  createdAt: string;
+  blocker: ModerationProfile | null;
+  blocked: ModerationProfile | null;
+};
+
+export type ModerationQueue = { reports: ModerationReport[]; blocks: ModerationBlock[] };
+
+function parseModerationProfile(value: unknown): ModerationProfile | null {
+  if (!isRecord(value)) return null;
+  return {
+    id: requiredString(value.id, "profile id"),
+    name: requiredString(value.name, "profile name"),
+    headline: nullableString(value.headline),
+    isDiscoverable: requiredBoolean(value.isDiscoverable, "profile visibility"),
+  };
+}
+
+export async function fetchModerationQueue(): Promise<ModerationQueue> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>(
+    "moderation-console",
+    { body: { action: "queue" } },
+  );
+  if (error) throw new Error(errorMessage(error, "The moderation queue could not be loaded."));
+  if (!isRecord(data) || !Array.isArray(data.reports) || !Array.isArray(data.blocks)) {
+    throw new Error("The moderation service returned an invalid response.");
+  }
+  return {
+    reports: data.reports.filter(isRecord).map((row) => ({
+      id: requiredString(row.id, "report id"),
+      reason: requiredString(row.reason, "report reason"),
+      details: nullableString(row.details),
+      createdAt: requiredString(row.createdAt, "report time"),
+      reporter: parseModerationProfile(row.reporter),
+      reported: parseModerationProfile(row.reported),
+    })),
+    blocks: data.blocks.filter(isRecord).map((row) => ({
+      id: requiredString(row.id, "block id"),
+      createdAt: requiredString(row.createdAt, "block time"),
+      blocker: parseModerationProfile(row.blocker),
+      blocked: parseModerationProfile(row.blocked),
+    })),
+  };
+}
+
+export async function resolveModerationReport(input: {
+  reportId: string;
+  resolution: "resolved" | "dismissed";
+  hideProfile?: boolean;
+}): Promise<void> {
+  const { error } = await getInsforgeClient().functions.invoke("moderation-console", {
+    body: {
+      action: "resolve",
+      reportId: input.reportId,
+      resolution: input.resolution,
+      hideProfile: input.hideProfile ?? false,
+    },
+  });
+  if (error) throw new Error(errorMessage(error, "The report could not be updated."));
+}
+
 export async function trackProductEvent(
   eventName: "sign_in_completed" | "profile_completed" | "profile_updated",
   properties: Record<string, string | number | boolean | null> = {},
