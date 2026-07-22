@@ -204,7 +204,7 @@ export function App() {
       void trackProductEvent("profile_completed").catch(() => undefined);
     }
 
-    return <ProfileSetup profile={profile} email={auth.user.email} onSave={saveProfile} onSignOut={auth.signOut} />;
+    return <ProfileSetup profile={profile} email={auth.user.email} onSave={saveProfile} onSignOut={auth.signOut} onProfileChange={setProfile} />;
   }
 
   async function saveEditedProfile(input: ProfileUpdateInput) {
@@ -231,6 +231,7 @@ export function App() {
       profile={profile}
       email={auth.user.email}
       onSaveProfile={saveEditedProfile}
+      onProfileChange={setProfile}
       onSaveLocation={saveLocation}
       onSignOut={auth.signOut}
     />
@@ -243,12 +244,14 @@ function DiscoveryApp({
   profile,
   email,
   onSaveProfile,
+  onProfileChange,
   onSaveLocation,
   onSignOut,
 }: {
   profile: BreaProfile;
   email: string;
   onSaveProfile: (input: ProfileUpdateInput) => Promise<void>;
+  onProfileChange: (profile: BreaProfile) => void;
   onSaveLocation: (latitude: number, longitude: number) => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
@@ -490,6 +493,7 @@ function DiscoveryApp({
           setIsEditingProfile(false);
         }}
         onSignOut={onSignOut}
+        onProfileChange={onProfileChange}
       />
     );
   }
@@ -554,9 +558,9 @@ function DiscoveryApp({
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream-light"
               aria-label="View your profile"
             >
-              {profile.avatarUrl && (
+              {(profile.photos[0]?.url ?? profile.avatarUrl) && (
                 <img
-                  src={profile.avatarUrl}
+                  src={profile.photos[0]?.url ?? profile.avatarUrl ?? undefined}
                   alt=""
                   referrerPolicy="no-referrer"
                   className="h-9 w-9 rounded-full object-cover"

@@ -8,6 +8,7 @@ import type {
   ConnectionResponse,
   PeopleSearchResponse,
   PersonMatch,
+  ProfilePhoto,
   ProfileUpdateInput,
   ReportReason,
 } from "../types";
@@ -37,6 +38,21 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+export function parseProfilePhotos(value: unknown): ProfilePhoto[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const key = typeof item.key === "string" ? item.key.trim() : "";
+    return url && key ? [{ url, key }] : [];
+  }).slice(0, 6);
+}
+
+function parsePhotoUrls(value: unknown): string[] {
+  return stringArray(value).map((url) => url.trim()).filter(Boolean).slice(0, 6);
+}
+
 function nullableNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -51,6 +67,7 @@ const PROFILE_FIELDS = [
   "user_id",
   "name",
   "avatar_url",
+  "photos",
   "headline",
   "bio",
   "skills",
@@ -72,6 +89,7 @@ function parseProfile(value: unknown): BreaProfile {
     userId: requiredString(valueAt(value, "userId", "user_id"), "profile owner"),
     name: requiredString(value.name, "profile name"),
     avatarUrl: nullableString(valueAt(value, "avatarUrl", "avatar_url")),
+    photos: parseProfilePhotos(value.photos),
     headline: nullableString(value.headline),
     bio: nullableString(value.bio),
     skills: stringArray(value.skills),
@@ -119,6 +137,7 @@ function parsePerson(value: unknown): PersonMatch {
     id: requiredString(value.id, "profile id"),
     name: requiredString(value.name, "profile name"),
     avatarUrl: nullableString(valueAt(value, "avatarUrl", "avatar_url")),
+    photoUrls: parsePhotoUrls(valueAt(value, "photoUrls", "photo_urls")),
     headline: requiredString(value.headline, "profile headline"),
     bio: nullableString(value.bio),
     distanceKm: distance,
@@ -304,6 +323,48 @@ export async function updateCurrentProfile(
 
   if (error || !data) throw new Error(errorMessage(error, "We could not save your profile."));
   return parseProfile(data);
+}
+
+const PROFILE_PHOTO_EXTENSIONS: Readonly<Record<string, string>> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+export async function uploadProfilePhoto(file: File): Promise<ProfilePhoto> {
+  const extension = PROFILE_PHOTO_EXTENSIONS[file.type];
+  if (!extension) throw new Error("Choose a JPEG, PNG, or WebP image.");
+
+  const key = `${crypto.randomUUID()}.${extension}`;
+  const { data, error } = await getInsforgeClient().storage
+    .from("profile-photos")
+    .upload(key, file);
+
+  if (error || !data) throw new Error(errorMessage(error, "We could not upload that photo."));
+  return {
+    url: requiredString(data.url, "uploaded photo URL"),
+    key: requiredString(data.key, "uploaded photo key"),
+  };
+}
+
+export async function updateProfilePhotos(
+  userId: string,
+  photos: ProfilePhoto[],
+): Promise<BreaProfile> {
+  const { data, error } = await getInsforgeClient().database
+    .from("profiles")
+    .update({ photos })
+    .eq("user_id", userId)
+    .select(PROFILE_FIELDS)
+    .single();
+
+  if (error || !data) throw new Error(errorMessage(error, "We could not save your photos."));
+  return parseProfile(data);
+}
+
+export async function removeProfilePhotoObject(key: string): Promise<void> {
+  const { error } = await getInsforgeClient().storage.from("profile-photos").remove(key);
+  if (error) throw new Error(errorMessage(error, "We could not remove the stored photo."));
 }
 
 // Serialize an existing profile into the update payload, applying overrides.

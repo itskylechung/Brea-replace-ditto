@@ -79,6 +79,7 @@ export type ProfileRow = {
   id: string;
   name: string;
   avatar_url: string | null;
+  photos: unknown;
   headline: string;
   bio: string | null;
   skills: string[];
@@ -89,6 +90,16 @@ export type ProfileRow = {
   embedding?: number[] | null;
   embedding_hash?: string | null;
 };
+
+export function parsePhotoUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((photo) => {
+    if (!photo || typeof photo !== "object" || Array.isArray(photo)) return [];
+    const url = (photo as Record<string, unknown>).url;
+    return typeof url === "string" && url.trim() ? [url.trim()] : [];
+  }).slice(0, 6);
+}
 
 export type RankedProfile = {
   profile: ProfileRow;
@@ -686,7 +697,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const { data: candidateData, error: candidateError } = await admin.database
     .from("profiles")
     .select(
-      "id, name, avatar_url, headline, bio, skills, interests, availability, latitude, longitude, embedding, embedding_hash",
+      "id, name, avatar_url, photos, headline, bio, skills, interests, availability, latitude, longitude, embedding, embedding_hash",
     )
     .neq("id", sender.id)
     .eq("onboarding_completed", true)
@@ -781,6 +792,7 @@ async function handleRequest(request: Request): Promise<Response> {
     id: profile.id,
     name: profile.name,
     avatarUrl: profile.avatar_url,
+    photoUrls: parsePhotoUrls(profile.photos),
     headline: profile.headline,
     bio: profile.bio,
     distanceKm: Math.round(distanceKm * 10) / 10,
