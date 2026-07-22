@@ -77,10 +77,10 @@ with `db migrations list` first.
 
 Issue #67 adds the first InsForge Storage surface: a public-read `profile-photos` bucket. Browser
 uploads use the signed-in member's access token, and the migration policies restrict inserts and
-deletes—and authenticated object listings—to the original uploader. Public bucket downloads use
-unguessable known-key URLs without exposing a bucket-wide listing, and object keys contain no user
-identifier. Profiles persist both the public `url` and storage `key` in the ordered
-`profiles.photos` JSON array; the key is required for deletion.
+deletes to the original uploader while allowing authenticated and anonymous reads. Treat every
+object in this bucket as public and enumerable; object keys contain no user identifier. Profiles
+persist both the public `url` and storage `key` in the ordered `profiles.photos` JSON array; the key
+is required for deletion.
 
 Provision the bucket before shipping the gallery:
 
@@ -90,9 +90,9 @@ npx @insforge/cli storage buckets
 npx @insforge/cli storage create-bucket profile-photos
 ```
 
-The bucket must remain public so anonymous known-key image reads take the storage fast path. Public
-does not make listing or writes public: `storage.objects` RLS keeps lists owner-only and owns
-insert/delete authorization.
+The bucket must remain public so anonymous image reads take the storage fast path. The public-read
+`storage.objects` policy also permits listings; insert and delete authorization remains
+owner-scoped.
 
 Keep the server upload ceiling slightly above the UI's 5 MB limit. Export the current project
 config, set `storage.max_file_size_mb = 8`, review the plan, and apply it:
@@ -121,8 +121,8 @@ gallery.
 
 Verify with `storage buckets`, upload/reorder/delete from a signed-in browser, and confirm the
 removed object no longer appears in `storage list-objects profile-photos`. Also test a second
-account: a known image URL must render, while that account must not be able to list or delete the
-first account's object.
+account: the image URL must render, while that account must not be able to delete the first
+account's object.
 
 ## Secrets
 
