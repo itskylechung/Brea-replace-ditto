@@ -64,6 +64,13 @@ export interface ConnectionDecisionResponse {
   respondedAt: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+}
+
 export type ReportReason = "spam" | "harassment" | "misleading" | "unsafe" | "other";
 
 export interface BreaProfile {

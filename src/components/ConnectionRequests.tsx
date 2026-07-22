@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listConnectionInbox, respondToConnection } from "../lib/api";
 import type { ConnectionInboxResponse, ConnectionItem } from "../types";
+import { ChatPanel } from "./ChatPanel";
 
 type InboxState =
   | { status: "loading" }
@@ -49,11 +50,15 @@ function RequestRow({
   item,
   isResponding,
   respondError,
+  isChatOpen,
+  onToggleChat,
   onRespond,
 }: {
   item: ConnectionItem;
   isResponding: boolean;
   respondError: string | null;
+  isChatOpen: boolean;
+  onToggleChat: (item: ConnectionItem) => void;
   onRespond: (item: ConnectionItem, action: "accept" | "decline") => void;
 }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -104,6 +109,17 @@ function RequestRow({
           )}
         </div>
 
+        {item.status === "accepted" && (
+          <button
+            type="button"
+            onClick={() => onToggleChat(item)}
+            aria-expanded={isChatOpen}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-hairline-strong bg-canvas px-4 text-sm font-medium text-ink transition hover:border-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {isChatOpen ? "Hide chat" : "Message"}
+          </button>
+        )}
+
         {showDecisionButtons && (
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -130,6 +146,7 @@ function RequestRow({
           {respondError}
         </p>
       )}
+      {isChatOpen && <ChatPanel item={item} />}
     </li>
   );
 }
@@ -140,6 +157,8 @@ function RequestGroup({
   items,
   respondingId,
   respondErrors,
+  openChatId,
+  onToggleChat,
   onRespond,
 }: {
   title: string;
@@ -147,6 +166,8 @@ function RequestGroup({
   items: ConnectionItem[];
   respondingId: string | null;
   respondErrors: Record<string, string>;
+  openChatId: string | null;
+  onToggleChat: (item: ConnectionItem) => void;
   onRespond: (item: ConnectionItem, action: "accept" | "decline") => void;
 }) {
   return (
@@ -164,6 +185,8 @@ function RequestGroup({
               item={item}
               isResponding={respondingId === item.id}
               respondError={respondErrors[item.id] ?? null}
+              isChatOpen={openChatId === item.id}
+              onToggleChat={onToggleChat}
               onRespond={onRespond}
             />
           ))}
@@ -177,6 +200,11 @@ export function ConnectionRequests() {
   const [state, setState] = useState<InboxState>({ status: "loading" });
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [respondErrors, setRespondErrors] = useState<Record<string, string>>({});
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
+
+  function toggleChat(item: ConnectionItem) {
+    setOpenChatId((current) => (current === item.id ? null : item.id));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -242,8 +270,8 @@ export function ConnectionRequests() {
         Your requests
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-slate">
-        Accept a request to share your LinkedIn profiles with each other. Declining is silent—the
-        sender is not notified.
+        Accept a request to share your LinkedIn profiles and start messaging each other. Declining
+        is silent—the sender is not notified.
       </p>
 
       {state.status === "loading" && (
@@ -285,6 +313,8 @@ export function ConnectionRequests() {
             items={state.inbox.incoming}
             respondingId={respondingId}
             respondErrors={respondErrors}
+            openChatId={openChatId}
+            onToggleChat={toggleChat}
             onRespond={(item, action) => void respond(item, action)}
           />
           <RequestGroup
@@ -293,6 +323,8 @@ export function ConnectionRequests() {
             items={state.inbox.outgoing}
             respondingId={respondingId}
             respondErrors={respondErrors}
+            openChatId={openChatId}
+            onToggleChat={toggleChat}
             onRespond={(item, action) => void respond(item, action)}
           />
         </div>
