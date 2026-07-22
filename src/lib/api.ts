@@ -7,6 +7,10 @@ import type {
   ConnectionInboxResponse,
   ConnectionItem,
   ConnectionResponse,
+  EventAttendeesResponse,
+  EventCreateInput,
+  EventRsvpResponse,
+  EventSummary,
   PeopleSearchResponse,
   PersonMatch,
   ProfilePhoto,
@@ -592,6 +596,111 @@ export async function resolveModerationReport(input: {
     },
   });
   if (error) throw new Error(errorMessage(error, "The report could not be updated."));
+}
+
+function requiredNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`The backend response is missing ${field}.`);
+  }
+  return value;
+}
+
+export function parseEventSummary(value: unknown): EventSummary {
+  if (!isRecord(value)) throw new Error("The events service returned an invalid event.");
+  return {
+    id: requiredString(value.id, "event id"),
+    title: requiredString(value.title, "event title"),
+    startsAt: requiredString(valueAt(value, "startsAt", "starts_at"), "event start time"),
+    placeLabel: requiredString(valueAt(value, "placeLabel", "place_label"), "event place"),
+    capacity: requiredNumber(value.capacity, "event capacity"),
+    tags: stringArray(value.tags),
+    hostName: requiredString(valueAt(value, "hostName", "host_name"), "event host"),
+    attendeeCount: requiredNumber(
+      valueAt(value, "attendeeCount", "attendee_count"),
+      "attendee count",
+    ),
+    isAttending: requiredBoolean(valueAt(value, "isAttending", "is_attending"), "RSVP state"),
+    isHost: requiredBoolean(valueAt(value, "isHost", "is_host"), "host state"),
+  };
+}
+
+export class EventActionError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "EventActionError";
+    this.code = code;
+  }
+}
+
+async function invokeEvents(body: Record<string, unknown>, fallback: string): Promise<unknown> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>("events", { body });
+  if (error) throw new EventActionError(errorMessage(error, fallback), connectionErrorCode(error));
+  return data;
+}
+
+export async function listEvents(): Promise<EventSummary[]> {
+  const data = await invokeEvents({ action: "list" }, "We could not load events right now.");
+  if (!isRecord(data) || !Array.isArray(data.events)) {
+    throw new Error("The events service returned an invalid response.");
+  }
+  return data.events.map(parseEventSummary);
+}
+
+export async function createEvent(input: EventCreateInput): Promise<EventSummary> {
+  const data = await invokeEvents(
+    { action: "create", ...input },
+    "We could not create this event.",
+  );
+  return parseEventSummary(data);
+}
+
+function parseRsvpResponse(value: unknown): EventRsvpResponse {
+  if (!isRecord(value)) throw new Error("The events service returned an invalid response.");
+  return {
+    eventId: requiredString(valueAt(value, "eventId", "event_id"), "event id"),
+    attendeeCount: requiredNumber(
+      valueAt(value, "attendeeCount", "attendee_count"),
+      "attendee count",
+    ),
+    isAttending: requiredBoolean(valueAt(value, "isAttending", "is_attending"), "RSVP state"),
+  };
+}
+
+export async function rsvpToEvent(eventId: string): Promise<EventRsvpResponse> {
+  return parseRsvpResponse(
+    await invokeEvents({ action: "rsvp", eventId }, "We could not save your RSVP."),
+  );
+}
+
+export async function cancelEventRsvp(eventId: string): Promise<EventRsvpResponse> {
+  return parseRsvpResponse(
+    await invokeEvents({ action: "cancel", eventId }, "We could not cancel your RSVP."),
+  );
+}
+
+export async function listEventAttendees(eventId: string): Promise<EventAttendeesResponse> {
+  const data = await invokeEvents(
+    { action: "attendees", eventId },
+    "We could not load the attendee list.",
+  );
+  if (!isRecord(data) || !Array.isArray(data.attendees)) {
+    throw new Error("The events service returned an invalid response.");
+  }
+  return {
+    eventId: requiredString(valueAt(data, "eventId", "event_id"), "event id"),
+    attendees: data.attendees.map((attendee) => {
+      if (!isRecord(attendee)) throw new Error("The events service returned an invalid attendee.");
+      return {
+        id: requiredString(attendee.id, "attendee id"),
+        name: requiredString(attendee.name, "attendee name"),
+        avatarUrl: nullableString(valueAt(attendee, "avatarUrl", "avatar_url")),
+        headline: nullableString(attendee.headline),
+      };
+    }),
+    hiddenCount: requiredNumber(valueAt(data, "hiddenCount", "hidden_count"), "hidden count"),
+  };
 }
 
 export async function trackProductEvent(
