@@ -17,10 +17,21 @@ export type ProfileRow = {
   id: string;
   name: string;
   avatar_url: string | null;
+  photos: unknown;
   headline: string | null;
   location_label: string | null;
   linkedin_profile_url: string | null;
 };
+
+export function parsePhotoUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((photo) => {
+    if (!photo || typeof photo !== "object" || Array.isArray(photo)) return [];
+    const url = (photo as Record<string, unknown>).url;
+    return typeof url === "string" && url.trim() ? [url.trim()] : [];
+  }).slice(0, 6);
+}
 
 export function parseAllowedOrigins(value: string | undefined): Set<string> {
   return new Set((value ?? "").split(",").map((origin) => origin.trim()).filter(Boolean));
@@ -91,7 +102,7 @@ export function connectionItem(
     person: {
       id: person.id,
       name: person.name,
-      avatarUrl: person.avatar_url,
+      avatarUrl: parsePhotoUrls(person.photos)[0] ?? person.avatar_url,
       headline: person.headline,
       locationLabel: person.location_label,
       linkedinProfileUrl: connection.status === "accepted" ? person.linkedin_profile_url : null,
@@ -222,7 +233,7 @@ async function handleRequest(request: Request): Promise<Response> {
   if (profileIds.length > 0) {
     const { data: peopleData, error: peopleError } = await admin.database
       .from("profiles")
-      .select("id, name, avatar_url, headline, location_label, linkedin_profile_url")
+      .select("id, name, avatar_url, photos, headline, location_label, linkedin_profile_url")
       .in("id", profileIds);
     if (peopleError) {
       return errorResponse(
