@@ -35,7 +35,8 @@ export function PersonCard({
   onReport,
   onViewRequests,
 }: PersonCardProps) {
-  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const [failedPhotoUrls, setFailedPhotoUrls] = useState<Set<string>>(() => new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState<ReportReason>("spam");
@@ -50,6 +51,17 @@ export function PersonCard({
   const isIncoming = connectionState.status === "incoming";
   const isAccepted = connectionState.status === "accepted";
   const isUnavailable = connectionState.status === "unavailable";
+  const activePhotoIndex = person.photoUrls.length > 0 ? photoIndex % person.photoUrls.length : 0;
+  const galleryPhotoUrl = person.photoUrls[activePhotoIndex] ?? null;
+  const activePhotoUrl = galleryPhotoUrl && !failedPhotoUrls.has(galleryPhotoUrl)
+    ? galleryPhotoUrl
+    : person.avatarUrl && !failedPhotoUrls.has(person.avatarUrl)
+      ? person.avatarUrl
+      : null;
+
+  function markPhotoFailed(url: string) {
+    setFailedPhotoUrls((current) => new Set(current).add(url));
+  }
 
   async function hide() {
     setMenuOpen(false);
@@ -90,27 +102,66 @@ export function PersonCard({
   return (
     <article className="flex h-full flex-col rounded-xl border border-hairline-soft bg-canvas p-5 shadow-subtle transition hover:shadow-card sm:p-6">
       <div className="flex items-start gap-4">
-        <div className="relative shrink-0">
-          {person.avatarUrl && !avatarFailed ? (
-            <img
-              src={person.avatarUrl}
-              alt={`${person.name}'s profile`}
-              loading="lazy"
-              onError={() => setAvatarFailed(true)}
-              className="h-16 w-16 rounded-full object-cover"
+        <div className="shrink-0">
+          <div className="relative">
+            {person.photoUrls.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => setPhotoIndex((current) => (current + 1) % person.photoUrls.length)}
+                aria-label={`Show next photo of ${person.name}`}
+                className="block rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {activePhotoUrl ? (
+                  <img
+                    src={activePhotoUrl}
+                    alt={`${person.name}'s profile, photo ${activePhotoIndex + 1} of ${person.photoUrls.length}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={() => markPhotoFailed(activePhotoUrl)}
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <span
+                    aria-label={`${person.name}'s initials`}
+                    className="grid h-16 w-16 place-items-center rounded-full bg-cream-deeper text-lg font-semibold text-primary-deep"
+                  >
+                    {initials(person.name)}
+                  </span>
+                )}
+              </button>
+            ) : activePhotoUrl ? (
+              <img
+                src={activePhotoUrl}
+                alt={`${person.name}'s profile`}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={() => markPhotoFailed(activePhotoUrl)}
+                className="h-16 w-16 rounded-full object-cover"
+              />
+            ) : (
+              <div
+                aria-label={`${person.name}'s initials`}
+                className="grid h-16 w-16 place-items-center rounded-full bg-cream-deeper text-lg font-semibold text-primary-deep"
+              >
+                {initials(person.name)}
+              </div>
+            )}
+            <span
+              className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-canvas bg-success"
+              aria-label="Available"
             />
-          ) : (
-            <div
-              aria-label={`${person.name}'s initials`}
-              className="grid h-16 w-16 place-items-center rounded-full bg-cream-deeper text-lg font-semibold text-primary-deep"
-            >
-              {initials(person.name)}
+          </div>
+          {person.photoUrls.length > 1 && (
+            <div className="mt-1.5 flex justify-center gap-1" aria-label={`Photo ${activePhotoIndex + 1} of ${person.photoUrls.length}`}>
+              {person.photoUrls.map((url, index) => (
+                <span
+                  key={`${url}-${index}`}
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 rounded-full ${index === activePhotoIndex ? "bg-primary" : "bg-beige"}`}
+                />
+              ))}
             </div>
           )}
-          <span
-            className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-canvas bg-success"
-            aria-label="Available"
-          />
         </div>
 
         <div className="min-w-0 flex-1">

@@ -16,9 +16,10 @@ const termClass = "text-xs font-semibold uppercase tracking-[0.1em] text-steel";
 const detailChipClass = "rounded-full bg-cream-deeper px-2.5 py-1 text-xs font-medium text-slate";
 
 export function ProfileView({ profile, onEdit }: { profile: BreaProfile; onEdit: () => void }): JSX.Element {
-  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [failedPhotoUrl, setFailedPhotoUrl] = useState<string | null>(null);
 
   const tags = Array.from(new Set([...profile.skills, ...profile.interests])).slice(0, 6);
+  const mainPhotoUrl = profile.photos[0]?.url ?? profile.avatarUrl;
   const hasCoords = profile.latitude !== null && profile.longitude !== null;
   const notAdded = <span className="text-muted">Not added</span>;
 
@@ -39,13 +40,13 @@ export function ProfileView({ profile, onEdit }: { profile: BreaProfile; onEdit:
       <div className="mt-8 max-w-xl rounded-xl border border-hairline-soft bg-canvas p-5 shadow-subtle sm:p-6">
         <div className="flex items-start gap-4">
           <div className="shrink-0">
-            {profile.avatarUrl && !avatarFailed ? (
+            {mainPhotoUrl && failedPhotoUrl !== mainPhotoUrl ? (
               <img
-                src={profile.avatarUrl}
+                src={mainPhotoUrl}
                 alt={`${profile.name}'s profile`}
                 loading="lazy"
                 referrerPolicy="no-referrer"
-                onError={() => setAvatarFailed(true)}
+                onError={() => setFailedPhotoUrl(mainPhotoUrl)}
                 className="h-16 w-16 rounded-full object-cover"
               />
             ) : (
@@ -80,6 +81,20 @@ export function ProfileView({ profile, onEdit }: { profile: BreaProfile; onEdit:
             </div>
           </div>
         </div>
+
+        {profile.photos.length > 1 && (
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Additional profile photos">
+            {profile.photos.slice(1).map((photo, index) => (
+              <img
+                key={photo.key}
+                src={photo.url}
+                alt={`Profile photo ${index + 2}`}
+                loading="lazy"
+                className="h-12 w-12 rounded-lg object-cover"
+              />
+            ))}
+          </div>
+        )}
 
         {tags.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5" aria-label="Skills and interests">

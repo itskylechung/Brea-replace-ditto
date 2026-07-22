@@ -9,6 +9,7 @@ import type {
   ConnectionResponse,
   PeopleSearchResponse,
   PersonMatch,
+  ProfilePhoto,
   ProfileUpdateInput,
   ReportReason,
 } from "../types";
@@ -38,6 +39,21 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+export function parseProfilePhotos(value: unknown): ProfilePhoto[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const key = typeof item.key === "string" ? item.key.trim() : "";
+    return url && key ? [{ url, key }] : [];
+  }).slice(0, 6);
+}
+
+function parsePhotoUrls(value: unknown): string[] {
+  return stringArray(value).map((url) => url.trim()).filter(Boolean).slice(0, 6);
+}
+
 function nullableNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -52,6 +68,7 @@ const PROFILE_FIELDS = [
   "user_id",
   "name",
   "avatar_url",
+  "photos",
   "headline",
   "bio",
   "skills",
@@ -73,6 +90,7 @@ function parseProfile(value: unknown): BreaProfile {
     userId: requiredString(valueAt(value, "userId", "user_id"), "profile owner"),
     name: requiredString(value.name, "profile name"),
     avatarUrl: nullableString(valueAt(value, "avatarUrl", "avatar_url")),
+    photos: parseProfilePhotos(value.photos),
     headline: nullableString(value.headline),
     bio: nullableString(value.bio),
     skills: stringArray(value.skills),
@@ -120,6 +138,7 @@ function parsePerson(value: unknown): PersonMatch {
     id: requiredString(value.id, "profile id"),
     name: requiredString(value.name, "profile name"),
     avatarUrl: nullableString(valueAt(value, "avatarUrl", "avatar_url")),
+    photoUrls: parsePhotoUrls(valueAt(value, "photoUrls", "photo_urls")),
     headline: requiredString(value.headline, "profile headline"),
     bio: nullableString(value.bio),
     distanceKm: distance,
@@ -326,6 +345,48 @@ export async function updateCurrentProfile(
   return parseProfile(data);
 }
 
+const PROFILE_PHOTO_EXTENSIONS: Readonly<Record<string, string>> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+export async function uploadProfilePhoto(file: File): Promise<ProfilePhoto> {
+  const extension = PROFILE_PHOTO_EXTENSIONS[file.type];
+  if (!extension) throw new Error("Choose a JPEG, PNG, or WebP image.");
+
+  const key = `${crypto.randomUUID()}.${extension}`;
+  const { data, error } = await getInsforgeClient().storage
+    .from("profile-photos")
+    .upload(key, file);
+
+  if (error || !data) throw new Error(errorMessage(error, "We could not upload that photo."));
+  return {
+    url: requiredString(data.url, "uploaded photo URL"),
+    key: requiredString(data.key, "uploaded photo key"),
+  };
+}
+
+export async function updateProfilePhotos(
+  userId: string,
+  photos: ProfilePhoto[],
+): Promise<BreaProfile> {
+  const { data, error } = await getInsforgeClient().database
+    .from("profiles")
+    .update({ photos })
+    .eq("user_id", userId)
+    .select(PROFILE_FIELDS)
+    .single();
+
+  if (error || !data) throw new Error(errorMessage(error, "We could not save your photos."));
+  return parseProfile(data);
+}
+
+export async function removeProfilePhotoObject(key: string): Promise<void> {
+  const { error } = await getInsforgeClient().storage.from("profile-photos").remove(key);
+  if (error) throw new Error(errorMessage(error, "We could not remove the stored photo."));
+}
+
 // Serialize an existing profile into the update payload, applying overrides.
 // Used to persist a single field (e.g. a newly captured location) without
 // re-collecting the rest of the profile.
@@ -453,6 +514,84 @@ export async function reportProfile(input: {
     },
   });
   if (error) throw new Error(errorMessage(error, "We could not submit your report."));
+}
+
+export type ModerationProfile = {
+  id: string;
+  name: string;
+  headline: string | null;
+  isDiscoverable: boolean;
+};
+
+export type ModerationReport = {
+  id: string;
+  reason: string;
+  details: string | null;
+  createdAt: string;
+  reporter: ModerationProfile | null;
+  reported: ModerationProfile | null;
+};
+
+export type ModerationBlock = {
+  id: string;
+  createdAt: string;
+  blocker: ModerationProfile | null;
+  blocked: ModerationProfile | null;
+};
+
+export type ModerationQueue = { reports: ModerationReport[]; blocks: ModerationBlock[] };
+
+function parseModerationProfile(value: unknown): ModerationProfile | null {
+  if (!isRecord(value)) return null;
+  return {
+    id: requiredString(value.id, "profile id"),
+    name: requiredString(value.name, "profile name"),
+    headline: nullableString(value.headline),
+    isDiscoverable: requiredBoolean(value.isDiscoverable, "profile visibility"),
+  };
+}
+
+export async function fetchModerationQueue(): Promise<ModerationQueue> {
+  const { data, error } = await getInsforgeClient().functions.invoke<unknown>(
+    "moderation-console",
+    { body: { action: "queue" } },
+  );
+  if (error) throw new Error(errorMessage(error, "The moderation queue could not be loaded."));
+  if (!isRecord(data) || !Array.isArray(data.reports) || !Array.isArray(data.blocks)) {
+    throw new Error("The moderation service returned an invalid response.");
+  }
+  return {
+    reports: data.reports.filter(isRecord).map((row) => ({
+      id: requiredString(row.id, "report id"),
+      reason: requiredString(row.reason, "report reason"),
+      details: nullableString(row.details),
+      createdAt: requiredString(row.createdAt, "report time"),
+      reporter: parseModerationProfile(row.reporter),
+      reported: parseModerationProfile(row.reported),
+    })),
+    blocks: data.blocks.filter(isRecord).map((row) => ({
+      id: requiredString(row.id, "block id"),
+      createdAt: requiredString(row.createdAt, "block time"),
+      blocker: parseModerationProfile(row.blocker),
+      blocked: parseModerationProfile(row.blocked),
+    })),
+  };
+}
+
+export async function resolveModerationReport(input: {
+  reportId: string;
+  resolution: "resolved" | "dismissed";
+  hideProfile?: boolean;
+}): Promise<void> {
+  const { error } = await getInsforgeClient().functions.invoke("moderation-console", {
+    body: {
+      action: "resolve",
+      reportId: input.reportId,
+      resolution: input.resolution,
+      hideProfile: input.hideProfile ?? false,
+    },
+  });
+  if (error) throw new Error(errorMessage(error, "The report could not be updated."));
 }
 
 export async function trackProductEvent(

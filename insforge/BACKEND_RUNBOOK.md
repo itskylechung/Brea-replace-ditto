@@ -47,6 +47,7 @@ npx @insforge/cli functions deploy <slug> --file insforge/functions/<slug>.ts
 | `connection-respond` | Accepts or declines a pending incoming request (`connectionId` + `action: accept \| decline`).                                                                                                                                                                                                                                                                                                                                  |
 | `profile-safety`     | `block` or `report` a profile (report reasons: `spam`, `harassment`, `misleading`, `unsafe`, `other`, plus optional free-text details). Writes `profile_blocks` / `profile_reports` and a product event.                                                                                                                                                                                                                        |
 | `track-event`        | Records client analytics events into `product_events`. Only `sign_in_completed`, `profile_completed`, and `profile_updated` are accepted from the client; other events are written server-side by the functions above.                                                                                                                                                                                                          |
+| `moderation-console` | Admin-only (issue #68): `queue` lists open `profile_reports` and recent `profile_blocks` joined with profile summaries; `resolve` marks a report `resolved`/`dismissed` (optionally setting the reported profile `is_discoverable=false`). Callers must be signed in **and** their email must be in `BREA_ADMIN_EMAILS`, otherwise `403 FORBIDDEN`. Served to the `/admin` page of the SPA.                                     |
 
 ## Database and migrations
 
@@ -73,6 +74,57 @@ npx @insforge/cli db migrations up --all      # apply all pending (or --to <vers
 mode must hand it to a human (`! <cmd>` in Claude Code), never run it itself. Confirm the target
 with `db migrations list` first.
 
+## Profile photo storage
+
+Issue #67 adds the first InsForge Storage surface: a public-read `profile-photos` bucket. Browser
+uploads use the signed-in member's access token, and the migration policies restrict inserts and
+deletes to the original uploader while allowing authenticated and anonymous reads. Treat every
+object in this bucket as public and enumerable; object keys contain no user identifier. Profiles
+persist both the public `url` and storage `key` in the ordered `profiles.photos` JSON array; the key
+is required for deletion.
+
+Provision the bucket before shipping the gallery:
+
+```sh
+npx @insforge/cli current
+npx @insforge/cli storage buckets
+npx @insforge/cli storage create-bucket profile-photos
+```
+
+The bucket must remain public so anonymous image reads take the storage fast path. The public-read
+`storage.objects` policy also permits listings; insert and delete authorization remains
+owner-scoped.
+
+Keep the server upload ceiling slightly above the UI's 5 MB limit. Export the current project
+config, set `storage.max_file_size_mb = 8`, review the plan, and apply it:
+
+```sh
+npx @insforge/cli config export --out insforge.toml
+npx @insforge/cli config plan --file insforge.toml
+npx @insforge/cli config apply --file insforge.toml
+```
+
+`config apply` is production-affecting and human-gated. If its output reports
+`storage.max_file_size_mb` in `skipped[]`, stop and upgrade the backend rather than bypassing the
+CLI. After the bucket and config exist, apply `20260721170000_profile-photos` through the normal
+guarded migration workflow, then deploy the updated `people-search` and `connection-inbox`
+functions:
+
+```sh
+npx @insforge/cli functions deploy people-search --file insforge/functions/people-search.ts
+npx @insforge/cli functions deploy connection-inbox --file insforge/functions/connection-inbox.ts
+```
+
+For this release, provision storage and apply the migration before the frontend build starts asking
+PostgREST for `profiles.photos`. Then keep the normal compatibility rule: ship the frontend before
+the two functions, because it safely treats a missing `photoUrls` response field as an empty
+gallery.
+
+Verify with `storage buckets`, upload/reorder/delete from a signed-in browser, and confirm the
+removed object no longer appears in `storage list-objects profile-photos`. Also test a second
+account: the image URL must render, while that account must not be able to delete the first
+account's object.
+
 ## Secrets
 
 Manage with `npx @insforge/cli secrets list` (names only) / `secrets get <key>` / `secrets add` /
@@ -88,6 +140,9 @@ needed. `secrets update` is human-gated in agent auto mode.
     `KEY =` prefix, so if you see `KEY =` **twice**, the stored value is corrupted. CLI smoke tests
     cannot catch this because they send no `Origin` header — only a real cross-origin browser
     request (or an explicit `-H "Origin: ..."` curl) exercises CORS.
+- **`BREA_ADMIN_EMAILS`** (app secret) — comma-separated, case-insensitive email allowlist for the
+  `moderation-console` function. Empty/unset means nobody is an admin (the console fails closed).
+  This is the interim admin auth posture until OPS-02 (#26) lands a real role model.
 - **`BREA_MVP_PROFILE_ID`** — **dead.** No deployed function reads it (the auth pivot removed the
   last reader). It is pending removal under **issue #29**; do not use it and do not re-add it to any
   new environment.
