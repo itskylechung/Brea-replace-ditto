@@ -61,8 +61,12 @@ Tables (parent, 2026-07-20): `profiles`, `connections`, `product_events`, `profi
   respond / block / report / events). This is the newest schema and is the migration the retired
   branch is missing.
 
-Pending (written, not yet applied): `20260721120000_profile-embeddings` — adds `profiles.embedding`
-/ `profiles.embedding_hash` for semantic search (#69); admin-client only, no grant changes.
+- `20260722102300_profile-embeddings` — adds `profiles.embedding` / `profiles.embedding_hash` for
+  semantic search (#69); written and applied only by the server-side admin client, though the
+  pre-existing table-wide `GRANT SELECT ... TO authenticated` + own-row RLS policy means a member
+  can read the columns on their own row. Rollback note: revert the `people-search` function deploy
+  _before_ dropping these columns — the function hard-selects them, so dropping first turns every
+  search into a 500.
 
 Workflow:
 

@@ -123,6 +123,8 @@ Deno.test("profileEmbeddingText joins searchable fields and drops empty ones", (
 
 Deno.test("rankProfileSemantic applies the similarity threshold and keyword-based reasons", () => {
   assertEquals(rankProfileSemantic(profile(), "hiking", 2, SEMANTIC_MIN_SCORE - 0.01), null);
+  assertEquals(rankProfileSemantic(profile(), "hiking", 2, Number.NaN), null);
+  assert(rankProfileSemantic(profile(), "hiking", 2, SEMANTIC_MIN_SCORE));
 
   const keywordBacked = rankProfileSemantic(profile(), "hiking", 2, 0.9);
   assert(keywordBacked);

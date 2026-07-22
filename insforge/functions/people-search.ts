@@ -277,7 +277,8 @@ export function rankProfileSemantic(
   distanceKm: number,
   similarity: number,
 ): RankedProfile | null {
-  if (similarity < SEMANTIC_MIN_SCORE) return null;
+  // Number.isFinite also rejects NaN, which would otherwise pass `<` and sort unpredictably.
+  if (!Number.isFinite(similarity) || similarity < SEMANTIC_MIN_SCORE) return null;
 
   return {
     profile,
@@ -297,14 +298,25 @@ export async function embedTexts(apiKey: string, inputs: string[]): Promise<numb
     method: "POST",
     headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBEDDING_MODEL, input: inputs }),
+    // A hung gateway must become the keyword fallback, not a request-long stall.
+    signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw new Error(`Embedding request failed with status ${response.status}.`);
 
   const payload = await response.json() as { data?: { index: number; embedding: number[] }[] };
   const vectors = new Array<number[]>(inputs.length);
-  for (const item of payload.data ?? []) vectors[item.index] = item.embedding;
-  if (vectors.some((vector) => !Array.isArray(vector) || vector.length === 0)) {
-    throw new Error("Embedding response was incomplete.");
+  for (const item of payload.data ?? []) {
+    if (Number.isInteger(item.index) && item.index >= 0 && item.index < inputs.length) {
+      vectors[item.index] = item.embedding;
+    }
+  }
+  // Check every slot by index: `new Array(n)` is sparse, so `.some()` would skip
+  // exactly the missing entries this guard exists to catch.
+  for (let index = 0; index < inputs.length; index++) {
+    const vector = vectors[index];
+    if (!Array.isArray(vector) || vector.length === 0 || !vector.every(Number.isFinite)) {
+      throw new Error("Embedding response was incomplete.");
+    }
   }
   return vectors;
 }
@@ -324,6 +336,7 @@ async function rankSemantically(
 
   const stale = candidates.flatMap((candidate, index) =>
     Array.isArray(candidate.profile.embedding) && candidate.profile.embedding.length > 0 &&
+      candidate.profile.embedding.every(Number.isFinite) &&
       candidate.profile.embedding_hash === hashes[index]
       ? []
       : [index]
@@ -335,17 +348,33 @@ async function rankSemantically(
     candidates[candidateIndex].profile.embedding = vectors[staleOrder + 1];
   });
 
-  // Cache refreshed embeddings; a failed write only costs a re-embed on the next search.
-  await Promise.all(stale.map((index) =>
-    admin.database.from("profiles")
+  // Cache refreshed embeddings; a failed write only costs a re-embed on the next search,
+  // but log it — persistent write failures silently burn embedding quota.
+  await Promise.all(stale.map(async (index) => {
+    const { error } = await admin.database.from("profiles")
       .update({
         embedding: candidates[index].profile.embedding,
         embedding_hash: hashes[index],
       })
-      .eq("id", candidates[index].profile.id)
-  ));
+      .eq("id", candidates[index].profile.id);
+    if (error) console.error("people-search: embedding cache write failed", error);
+  }));
+
+  // A cached vector with the wrong dimensions (e.g. the model's serving provider changed)
+  // would cosine to 0 forever while its hash still matches — clear the hash so the next
+  // search re-embeds instead of silently excluding the profile for good.
+  const mismatched = candidates
+    .filter(({ profile }) => (profile.embedding ?? []).length !== queryVector.length)
+    .map(({ profile }) => profile.id);
+  if (mismatched.length > 0) {
+    console.error(`people-search: clearing ${mismatched.length} wrong-dimension cached embeddings`);
+    const { error } = await admin.database.from("profiles")
+      .update({ embedding_hash: null }).in("id", mismatched);
+    if (error) console.error("people-search: embedding cache clear failed", error);
+  }
 
   return candidates.flatMap(({ profile, distanceKm }) => {
+    if (mismatched.includes(profile.id)) return [];
     const similarity = cosineSimilarity(queryVector, profile.embedding ?? []);
     const match = rankProfileSemantic(profile, query, distanceKm, similarity);
     return match ? [match] : [];
@@ -696,16 +725,23 @@ async function handleRequest(request: Request): Promise<Response> {
     try {
       matches = await rankSemantically(admin, openRouterKey, validatedInput.value.query, inRadius);
       rankingMode = "semantic";
-    } catch {
+    } catch (error) {
       // An embedding-gateway outage degrades to keyword ranking instead of failing the search.
+      console.error("people-search: semantic ranking failed, using keyword fallback", error);
       matches = null;
     }
   }
-  if (!matches) {
-    matches = inRadius.flatMap(({ profile, distanceKm }) => {
+  // Also fall back on an EMPTY semantic result — semantic finding nothing is not proof
+  // nobody matches; the keyword ranker may still hit exact skill/interest terms.
+  if (!matches || matches.length === 0) {
+    const keywordMatches = inRadius.flatMap(({ profile, distanceKm }) => {
       const match = rankProfile(profile, validatedInput.value.query, distanceKm);
       return match ? [match] : [];
     });
+    if (!matches || keywordMatches.length > 0) {
+      matches = keywordMatches;
+      rankingMode = "keyword";
+    }
   }
   const ranked = matches.sort(compareRankedProfiles).slice(0, validatedInput.value.limit);
 
