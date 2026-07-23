@@ -52,9 +52,9 @@ npx @insforge/cli functions deploy <slug> --file insforge/functions/<slug>.ts
 
 ## Database and migrations
 
-Tables (parent, 2026-07-20): `profiles`, `connections`, `product_events`, `profile_blocks`,
-`profile_reports`. Migration files live in **`migrations/` at the repo root** (not under
-`insforge/`). Ten are applied on the parent, in order:
+Tables (parent, 2026-07-23): `profiles`, `connections`, `messages`, `product_events`,
+`profile_blocks`, `profile_reports`. Migration files live in **`migrations/` at the repo root** (not
+under `insforge/`). Ten are applied on the parent, in order:
 
 - `20260719000100_brea-mvp`
 - `20260719063613_linkedin-auth-profiles`
@@ -255,38 +255,31 @@ in `connections`); `connection-inbox` shows the request; `connection-respond` ac
   (clear cookies for the `35byng5f` host); still broken ⇒ platform-side, check the fingerprints
   above.
 
-## Retiring the `linkedin-auth` branch
+## Retiring the `linkedin-auth` branch — done
 
 **Decision (2026-07-20, issue #27):** delete the `linkedin-auth` backend branch and treat the parent
-as the sole backend (this runbook). This is recorded here and gated on a human running the deletion.
+as the sole backend (this runbook).
 
-Why it is safe:
+**The deletion is done and issue #27 is closed.** `npx @insforge/cli branch list` returns
+`No branches` (re-verified 2026-07-23). There is no open action here and no branch left to delete —
+what follows is kept only as the record of why removing it was safe.
 
 - The branch (`linkedin-auth`, app key `35byng5f-g8u`, mode `full`, hosts
   `https://35byng5f-g8u.ap-southeast.insforge.app` / `https://35byng5f-g8u.function2.insforge.app`,
   parent `135081c0-...`) was a full copy made 2026-07-19.
-- No deployed frontend points at the `35byng5f-g8u` hosts; everything targets the parent.
-- The branch is **behind**: it is missing migration `20260719073000` and the four newer function
-  deploys (it predates the connection-lifecycle work and had only `people-search` +
-  `connection-request`).
-- Its **only unique asset** was a replicated LinkedIn OAuth config. The parent now has that config
-  live — verified 2026-07-20: `linkedin` appears in both `curl .../api/auth/public-config` and
-  `metadata --json` `oAuthProviders`.
+- No deployed frontend pointed at the `35byng5f-g8u` hosts; everything targeted the parent.
+- The branch was **behind**: it never received migration `20260719073000` or any migration after it,
+  and it carried only `people-search` + `connection-request` — it predated the connection-lifecycle
+  work and every function added since.
+- Its **only unique asset** was a replicated LinkedIn OAuth config, which used InsForge shared keys
+  (`useSharedKey: true`) and therefore held no unrecoverable client secret. The parent carries that
+  config live — `linkedin` appears in both `curl .../api/auth/public-config` and `metadata --json`
+  `oAuthProviders`.
 
-**Deletion command — HUMAN step (destructive, not for an agent in auto mode):**
-
-```sh
-npx @insforge/cli branch delete linkedin-auth
-```
-
-The command prompts for confirmation. If it is ever run through the agent CLI wrapper, attach the
-approval flags (`--reason`, `--impact`, `--recommendation`) so the human approver sees the intent;
-`-y` skips the prompt only after human sign-off.
-
-Double-check immediately before deleting:
-
-- `npx @insforge/cli branch list` shows `linkedin-auth` is the branch being removed (app key
-  `35byng5f-g8u`) and nothing on it is unmerged or otherwise still needed.
-- No Vercel env var or frontend build still references any `35byng5f-g8u` host.
-- The parent is healthy and complete: `public-config` still lists `linkedin`, `functions list` shows
-  all eight functions, and `db migrations list` shows `20260719073000` applied.
+Should a backend branch ever be created again, deleting it is destructive and human-gated: run
+`npx @insforge/cli branch delete <name>` yourself rather than through an agent in auto mode, and if
+it does go through the agent CLI wrapper, attach `--reason`, `--impact`, and `--recommendation` so
+the human approver sees the intent (`-y` skips the prompt only after human sign-off). Before
+deleting, confirm the branch holds nothing unmerged, that no Vercel env var or frontend build
+references its hosts, and that the parent is healthy — `public-config` still lists `linkedin`,
+`functions list` shows all eight functions, and `db migrations list` shows the full set applied.
