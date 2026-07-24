@@ -1,41 +1,56 @@
 # HANDOFF
 
-Working handoff for Brea. Written 2026-07-21 at the end of the M1/M2 delivery session; refreshed the same evening after the session-persistence fix (PR #64) and the verification/hygiene sweep (issues #4, #12, #24, #27, #29, #47 closed). Read this first when picking the project up on a new machine. This file supersedes an earlier uncommitted `HANDOFF.md` that lived only on the original development machine — that file has since been recovered and its unique operational content is merged into the "Ops notes" and "E2E test accounts" sections below (triage summaries also live in the runbook's Triage and Secrets sections). Credentials never live in this file; see "E2E test accounts" for how to retrieve them.
+Working handoff for Brea. Written 2026-07-21 at the end of the M1/M2 delivery session and refreshed 2026-07-24 after messaging, semantic ranking, profile galleries, moderation, and migration-history fixes reached `main`. Read this first when picking the project up on a new machine, then use `PRODUCT.md` for the product foundation, `docs/product/CURRENT_STATE.md` for the Production product truth, and `insforge/BACKEND_RUNBOOK.md` for backend operations. This file supersedes an earlier uncommitted `HANDOFF.md` that lived only on the original development machine — that file has since been recovered and its unique operational content is merged into the "Ops notes" and "E2E test accounts" sections below. Credentials never live in this file; see "E2E test accounts" for how to retrieve them.
 
 ## State of the product
 
-Frontend: Vite + React 19 SPA, no router (state-machine screens in `src/App.tsx`). Backend: InsForge project `brea-mvp-preview` — **still serving production** (`brea-replace-ditto.vercel.app`); every backend change is production-affecting until OPS-02 (#26) lands.
+Frontend: Vite + React 19 SPA. The three member tabs (Discover / Requests / Profile) are still a state machine in `src/App.tsx`; accepted connections open a chat panel inside Requests, and `/admin` opens a separate moderation surface. There is still no client-side router, so FE-12 (#48) remains the gate before a fourth member tab ships.
+
+Backend: InsForge project `brea-mvp-preview` — **still serving production** (`brea-replace-ditto.vercel.app`); every backend change is production-affecting until OPS-02 (#26) lands.
 
 **The browser only ever talks to the page's own origin** (PR #64): `vercel.json` rewrites proxy `/api/*` and `/fn/*` to InsForge server-side, and the client defaults its base URLs to `window.location.origin`. This keeps the auth refresh cookie **first-party** — do not reintroduce direct cross-origin backend URLs in client config; Safari/ITP and incognito windows kill sessions on every reload with them (see Ops notes).
 
 Deploys run through GitHub Actions (`.github/workflows/deploy.yml`); the only CI secret is `VERCEL_TOKEN`; only `VITE_INSFORGE_ANON_KEY` is inlined (public value) — the `VITE_*` URLs are intentionally unset.
 
-Milestones live on GitHub (M1 First-run experience / M2 Product surface / M3 Profile intelligence). The Epic F stability gate cleared on 2026-07-21: QA-01 #24, INT-01 #12, BE-04 #4 all closed with evidence (`docs/verification/2026-07-21-core-loop-verification.md`); OPS-01 #23 is reported and awaiting InsForge. Environment split (Epic G) remains OPS-02 #26. The merge queue is empty and `docs/METRICS.md` carries the frozen M1 baseline (dev/E2E-era numbers — later deltas are what matter).
+Live inventory verified 2026-07-24:
+
+- Production returns HTTP 200 and the latest `main` deployment is green.
+- Eight Edge Functions are active: `people-search`, `connection-request`, `connection-inbox`, `connection-respond`, `connection-messages`, `profile-safety`, `track-event`, and `moderation-console`.
+- Ten repository migrations are applied remotely. The backend has six application tables: `profiles`, `connections`, `messages`, `product_events`, `profile_blocks`, and `profile_reports`.
+- LinkedIn OAuth, `OPENROUTER_API_KEY`, and `BREA_ADMIN_EMAILS` are active. The public `profile-photos` bucket exists.
+- Local `typecheck`, `lint`, all 18 Vitest tests, and the production build pass. Deno is not installed on this machine; the last recorded backend check is the 56-test pass attached to PR #97.
+
+The original M1/M2 stability gate remains cleared with evidence in `docs/verification/2026-07-21-core-loop-verification.md`. Since that handoff, M3 capabilities have shipped: multi-photo profiles (#67), accepted-connection messaging (#66), semantic embedding ranking with keyword fallback (#69), and the admin moderation console (#68). `docs/METRICS.md` now owns the metric contract and preserves the frozen dev/E2E-era M1 baseline; later deltas are what matter.
 
 ## Decision log (the why, not just the what)
 
-1. **Geolocation moved from onboarding wall to first-search prompt** (FE-07/#42). Highest-friction permission was being asked at the lowest-trust moment. README/PRD amended; DB already allowed null coordinates.
+1. **Geolocation moved from onboarding wall to first-search prompt** (FE-07/#42). Highest-friction permission was being asked at the lowest-trust moment. The current product and technical contracts reflect this; DB already allowed null coordinates.
 2. **Discovery toggle is location-gated** (fix in #54). Hard DB CHECK `profiles_discoverable_is_complete` forbids discoverable-without-coordinates; the UI now shows exactly what will be saved (disabled checkbox + "Requires your location.") — no hidden flips.
 3. **Deferred-location members are NOT silently made discoverable.** PM decision on #52 = nudge (option b): after the first-search locate flow, a dismissible banner offers one-tap enable. Rationale: flipping a privacy-visibility bit without explicit consent contradicts "Private by default".
 4. **Welcome intro plays once per account by construction** (FE-09/#44): it triggers on the onboarding-save transition, which the `onboarding_completed` DB flag makes unrepeatable. No welcome_seen column, no migration. Known trade-off: closing mid-sequence does not replay.
 5. **"Paste LinkedIn text" profile import was dropped** in favor of suggestion chips (FE-08/#43). LinkedIn URL scraping is off the table permanently: product promise ("Brea does not scrape LinkedIn"), LinkedIn ToS, and technical walls (auth-walled, CORS). Richer import v2 = AI-assisted drafting via InsForge AI gateway, gated by OPS-02 (BE-06/#50).
-6. **Notifications are no longer out of scope** — Epic H approved as a PRD change: transactional email on request-received / request-accepted (BE-05/#49, blocked by OPS-02). Rationale: without any signal, the core loop gives members no reason to return; the badge (FE-11) is the interim loop-closure.
+6. **Notifications are no longer out of scope** — the Core Loop Roadmap includes transactional email on request-received / request-accepted (BE-05/#49, blocked by OPS-02). Rationale: without any signal, the core loop gives members no reason to return; the badge (FE-11) is the interim loop-closure.
 7. **LinkedIn OIDC provides only name/email/photo.** All "auto-fill from LinkedIn" work is bounded by that; the identity block (FE-06) makes the three items visible rather than pretending more exists.
 8. **Session persistence: same-origin proxy now, custom domain later** (#24 → PR #64). Real-browser testing showed the cross-site refresh cookie is blocked by Safari/ITP and incognito — sessions died on every reload. Interim fix (live): proxy `/api` + `/fn` through the page origin. Long-term posture stays with the OPS-02 custom domain (`app.` + `api.` under one registrable domain), at which point the proxy's latency/bandwidth trade-off can be retired. Sibling `*.vercel.app` subdomains can never work — `vercel.app` is on the Public Suffix List.
+9. **Semantic ranking is an enhancement, not a hard dependency** (#69). `people-search` embeds the query and cached profile text through OpenRouter, but falls back to the deterministic weighted keyword ranker whenever the key or gateway is unavailable. Search must keep working during model failure.
+10. **Messaging is limited to accepted connections** (#66). `connection-messages` deliberately returns the same 404 for unknown, unauthorized, pending, declined, or blocked conversations. The current UI polls every five seconds; Realtime remains an upgrade path, not a launch dependency.
+11. **Profile galleries are public media with owner-only writes** (#67). Up to six JPEG/PNG/WebP files (5 MB each in the UI) live in the public `profile-photos` bucket. Profiles retain both object URL and key so deletion remains possible.
+12. **Moderation uses an interim email allowlist** (#68). `/admin` is fail-closed behind `BREA_ADMIN_EMAILS`; it is an operations tool, not a member tab. A production role model belongs with OPS-02.
 
 ## What's next (priority order)
 
-1. **OPS-01 (#23, waiting):** reported to InsForge, awaiting reply. When following up, attach the newer log-fetch anomaly (see Ops notes: `postgres.logs`/`postgrest.logs` 504 at high limits).
-2. **OPS-06 (#51, P1):** safety ops loop. The weekly-review runbook and report queries are buildable now; only the alert automation waits on OPS-02 (email).
-3. **OPS-02 (#26):** stand up the real production InsForge project + custom domain — unblocks BE-05 (#49 email), BE-06 (#50 AI drafting), OPS-06 automation, and retires the proxy trade-off (Decision 8).
-4. M3 / Epic E v2 and Epic D (router) per the roadmap: router should land **before any fourth main screen** ships (FE-12/#48).
-5. Deferred micro-check: real-device geolocation prompt on a location-less profile — verify naturally during the next new tester's first run (noted on #12's close).
+1. **Backend stability — OPS-01 (#23) and OPS-07 (#98):** follow up on zombie-socket stalls, intermittent `502 BOOT_FAILED`, cold starts, and the reproducible 504 behavior under concurrent or large metadata/log requests. Use low-concurrency, small-limit diagnostics until InsForge confirms a fix.
+2. **OPS-02 (#26):** stand up the real Production InsForge project + custom domain. This removes the current blast radius, unblocks BE-05 (#49 email), BE-06 (#50 AI drafting), and safety automation, and eventually retires the same-origin proxy trade-off.
+3. **OPS-06 (#51):** finish the safety operations loop. The moderation console is now live; alerting and the weekly-review operating rhythm remain.
+4. **Product validation (#94):** use `docs/product/ROADMAP.md`, the Relationship Activation and Event-to-Meeting Epics, and the Professional Singles Pilot experiment. Validate the beachhead and curated-event wedge before expanding into a generic feed. Preserve the core: finding suitable people nearby and turning a promising connection into a real meeting.
+5. **Routing / Events decision:** FE-12 (#48) remains open. Events PR #82 is green but not shipped; it adds the fourth member tab, a migration, and a new Function. Do not merge it without an explicit production-affecting backend rollout decision.
+6. **Deferred device check:** verify the location-less first-search geolocation prompt on a real mobile browser during the next new tester's first run.
 
 ## New machine setup
 
 ```bash
 git clone https://github.com/itskylechung/Brea-replace-ditto.git && cd Brea-replace-ditto
-npm ci                        # Node 22 required (CI uses 22)
+npm ci                        # Node 22; 22.22+ recommended for the current InsForge CLI
 cp .env.example .env.local    # fill VITE_INSFORGE_ANON_KEY only
 npm run dev
 ```
@@ -45,7 +60,7 @@ Only `VITE_INSFORGE_ANON_KEY` is needed (public value — copy it from `.github/
 Not in git (per-machine, set up only when needed):
 - **Vercel CLI**: `vercel login`, then `vercel link` (org `team_AsxeTZXp7lznFDHlzyM6SiMA`, project `prj_o703rEVpuDhQAULkr9zPExnCH86L`). Not required to ship — deploys are CI-driven.
 - **InsForge CLI**: needed for any backend operation (functions deploy, migrations, secrets). `npx @insforge/cli` + link to `brea-mvp-preview` (project id in `insforge/BACKEND_RUNBOOK.md`). Migrations/secrets updates are human-gated — see the runbook.
-- **Deno**: only for `deno task --config insforge/deno.json check` (function typechecks, TEST-01).
+- **Deno**: required for `deno task --config insforge/deno.json check` and `deno task --config insforge/deno.json eval`. It is not installed by npm.
 - **InsForge agent skills** (per `AGENTS.md`): installed into gitignored agent dirs; reinstall from InsForge tooling if you use coding agents for backend work.
 - **E2E credentials**: stored in the `BREA_E2E_CREDENTIALS` InsForge secret — see "E2E test accounts" below.
 

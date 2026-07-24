@@ -1,4 +1,4 @@
-# Brea Web PRD
+# Brea Web PRD v2.0 — Archived Authenticated Release Contract
 
 | Field           | Value                                     |
 | --------------- | ----------------------------------------- |
@@ -960,4 +960,3 @@ Before the test begins, freeze:
 Proceed to a broader content surface only if personality content measurably improves selection,
 conversation quality, or confirmed meetings without unacceptable privacy, safety, or performance
 pressure. Do not proceed merely because members post or react.
-
