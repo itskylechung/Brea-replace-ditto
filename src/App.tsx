@@ -4,6 +4,7 @@ import { BreaMark } from "./components/BreaMark";
 import { ConnectionRequests } from "./components/ConnectionRequests";
 import { DiscoverySteps } from "./components/DiscoverySteps";
 import { EmptyState } from "./components/EmptyState";
+import { EventsPanel } from "./components/EventsPanel";
 import { PersonCard } from "./components/PersonCard";
 import { ProfileSetup } from "./components/ProfileSetup";
 import { ProfileView } from "./components/ProfileView";
@@ -238,7 +239,33 @@ export function App() {
   );
 }
 
-type DiscoveryView = "discover" | "requests" | "profile";
+// FE-12 (#48): hash-based tab routing, no router dependency. Back button and
+// deep links work for the main tabs; auth/onboarding screens stay state-driven
+// (they are session states, not shareable locations). The OAuth return path is
+// query-param based (`insforge_code`) and unaffected by hash changes. In-page
+// anchors (#people-search, #search-results) parse to "discover", so native
+// anchor scrolling keeps working on the discover tab.
+const TAB_VIEWS = ["discover", "events", "requests", "profile"] as const;
+type DiscoveryView = (typeof TAB_VIEWS)[number];
+
+function viewFromHash(): DiscoveryView {
+  const name = window.location.hash.replace(/^#\/?/, "");
+  return (TAB_VIEWS as readonly string[]).includes(name) ? (name as DiscoveryView) : "discover";
+}
+
+function useHashView(): [DiscoveryView, (next: DiscoveryView) => void] {
+  const [view, setViewState] = useState<DiscoveryView>(viewFromHash);
+  useEffect(() => {
+    const onHashChange = () => setViewState(viewFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  function setView(next: DiscoveryView) {
+    if (next === viewFromHash()) return;
+    window.location.hash = `/${next}`;
+  }
+  return [view, setView];
+}
 
 function DiscoveryApp({
   profile,
@@ -255,7 +282,7 @@ function DiscoveryApp({
   onSaveLocation: (latitude: number, longitude: number) => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
-  const [view, setView] = useState<DiscoveryView>("discover");
+  const [view, setView] = useHashView();
   const [pendingIncoming, setPendingIncoming] = useState<number | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [query, setQuery] = useState("");
@@ -519,6 +546,16 @@ function DiscoveryApp({
             </button>
             <button
               type="button"
+              onClick={() => setView("events")}
+              aria-current={view === "events" ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                view === "events" ? "bg-cream-light text-ink" : "text-steel hover:text-ink"
+              }`}
+            >
+              Events
+            </button>
+            <button
+              type="button"
               onClick={() => setView("requests")}
               aria-current={view === "requests" ? "page" : undefined}
               aria-label={
@@ -583,6 +620,10 @@ function DiscoveryApp({
         {view === "requests" ? (
           <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
             <ConnectionRequests />
+          </div>
+        ) : view === "events" ? (
+          <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">
+            <EventsPanel />
           </div>
         ) : view === "profile" ? (
           <div className="mx-auto w-full max-w-[1280px] px-4 py-12 sm:px-8 sm:py-16">

@@ -29,9 +29,9 @@ npx @insforge/cli db migrations list   # applied remote migrations
 curl -s https://35byng5f.ap-southeast.insforge.app/api/auth/public-config   # expect "linkedin" in oAuthProviders
 ```
 
-## Backend surface — the six functions
+## Backend surface — the deployed functions
 
-All six are deployed and `active` on the parent. Each is an authenticated POST endpoint that
+All are deployed and `active` on the parent (the new `events` function is pending its first deploy). Each is an authenticated POST endpoint that
 enforces the `BREA_ALLOWED_ORIGINS` CORS allowlist, verifies the caller's InsForge JWT, then uses
 the server-only admin client. Deploy any one with:
 
@@ -48,6 +48,7 @@ npx @insforge/cli functions deploy <slug> --file insforge/functions/<slug>.ts
 | `profile-safety`     | `block` or `report` a profile (report reasons: `spam`, `harassment`, `misleading`, `unsafe`, `other`, plus optional free-text details). Writes `profile_blocks` / `profile_reports` and a product event.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `track-event`        | Records client analytics events into `product_events`. Only `sign_in_completed`, `profile_completed`, and `profile_updated` are accepted from the client; other events are written server-side by the functions above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `moderation-console` | Admin-only (issue #68): `queue` lists open `profile_reports` and recent `profile_blocks` joined with profile summaries; `resolve` marks a report `resolved`/`dismissed` (optionally setting the reported profile `is_discoverable=false`). Callers must be signed in **and** their email must be in `BREA_ADMIN_EMAILS`, otherwise `403 FORBIDDEN`. Served to the `/admin` page of the SPA.                                                                                                                                                                                                                                                                                                                               |
+| `events`             | Events v1 (issue #70): `list` upcoming events (next 50, with host name, RSVP count, caller's RSVP state), `create` (title/startsAt/placeLabel/capacity/tags; the host is auto-RSVP'd), `rsvp` (409 `EVENT_FULL` / `EVENT_PAST`), `cancel`, and `attendees`. The attendee list is RSVP-gated (403 `RSVP_REQUIRED`) and shows only discoverable attendees with no block in either direction with the caller; everyone else is folded into `hiddenCount`. Writes `event_created` / `event_rsvped` product events.                                                                                                                                                                                                             |
 
 ## Database and migrations
 
@@ -68,6 +69,10 @@ Tables (parent, 2026-07-20): `profiles`, `connections`, `product_events`, `profi
   can read the columns on their own row. Rollback note: revert the `people-search` function deploy
   _before_ dropping these columns — the function hard-selects them, so dropping first turns every
   search into a 500.
+
+- `20260722130000_events` — `events` + `event_rsvps` tables for issue #70. Server-only (RLS
+  enabled, all privileges revoked); browser clients go through the `events` function. Apply this
+  migration _before_ deploying the `events` function.
 
 Workflow:
 

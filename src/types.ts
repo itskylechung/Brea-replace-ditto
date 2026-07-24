@@ -109,6 +109,46 @@ export interface ProfileUpdateInput {
   isAvailable: boolean;
 }
 
+export interface EventSummary {
+  id: string;
+  title: string;
+  startsAt: string;
+  placeLabel: string;
+  capacity: number;
+  tags: string[];
+  hostName: string;
+  attendeeCount: number;
+  isAttending: boolean;
+  isHost: boolean;
+}
+
+export interface EventCreateInput {
+  title: string;
+  startsAt: string;
+  placeLabel: string;
+  capacity: number;
+  tags: string[];
+}
+
+export interface EventRsvpResponse {
+  eventId: string;
+  attendeeCount: number;
+  isAttending: boolean;
+}
+
+export interface EventAttendee {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  headline: string | null;
+}
+
+export interface EventAttendeesResponse {
+  eventId: string;
+  attendees: EventAttendee[];
+  hiddenCount: number;
+}
+
 export type SearchStatus = "idle" | "loading" | "results" | "empty" | "error";
 
 export type ConnectionUiState =

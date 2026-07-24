@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseProfilePhotos } from "./api";
+import { parseEventSummary, parseProfilePhotos } from "./api";
 
 describe("parseProfilePhotos", () => {
   it("keeps ordered photo records with non-empty URLs and keys", () => {
@@ -35,5 +35,31 @@ describe("parseProfilePhotos", () => {
     }));
 
     expect(parseProfilePhotos(photos)).toEqual(photos.slice(0, 6));
+  });
+});
+
+describe("parseEventSummary", () => {
+  const valid = {
+    id: "event-1",
+    title: "Founder mixer",
+    startsAt: "2026-08-01T11:00:00.000Z",
+    placeLabel: "Songshan rooftop",
+    capacity: 30,
+    tags: ["founders"],
+    hostName: "Maya Chen",
+    attendeeCount: 5,
+    isAttending: true,
+    isHost: false,
+  };
+
+  it("parses a complete event summary", () => {
+    expect(parseEventSummary(valid)).toEqual(valid);
+  });
+
+  it("rejects responses missing required fields", () => {
+    expect(() => parseEventSummary(null)).toThrow();
+    expect(() => parseEventSummary({ ...valid, title: "" })).toThrow();
+    expect(() => parseEventSummary({ ...valid, capacity: "30" })).toThrow();
+    expect(() => parseEventSummary({ ...valid, isAttending: undefined })).toThrow();
   });
 });
