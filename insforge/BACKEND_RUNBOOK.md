@@ -24,14 +24,14 @@ Verify the live context and surface at any time (all read-only):
 ```sh
 npx @insforge/cli current              # confirm the linked project is brea-mvp-preview / 35byng5f
 npx @insforge/cli metadata --json      # auth providers, tables + row counts, functions
-npx @insforge/cli functions list       # the six deployed functions
+npx @insforge/cli functions list       # the eight deployed functions
 npx @insforge/cli db migrations list   # applied remote migrations
 curl -s https://35byng5f.ap-southeast.insforge.app/api/auth/public-config   # expect "linkedin" in oAuthProviders
 ```
 
-## Backend surface — the six functions
+## Backend surface — the eight functions
 
-All six are deployed and `active` on the parent. Each is an authenticated POST endpoint that
+All eight are deployed and `active` on the parent. Each is an authenticated POST endpoint that
 enforces the `BREA_ALLOWED_ORIGINS` CORS allowlist, verifies the caller's InsForge JWT, then uses
 the server-only admin client. Deploy any one with:
 
@@ -39,35 +39,45 @@ the server-only admin client. Deploy any one with:
 npx @insforge/cli functions deploy <slug> --file insforge/functions/<slug>.ts
 ```
 
-| Slug                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `people-search`      | Nearby-people search. Ranks discoverable/available profiles within a radius (haversine distance) by embedding cosine similarity (OpenRouter `nvidia/nemotron-3-embed-1b:free`, cached per-profile in `profiles.embedding`/`embedding_hash`), falling back to weighted keyword matching when `OPENROUTER_API_KEY` is unset or the gateway errors. Returns an evidence-based `matchReason`, `distanceKm`, and a bidirectional `connectionStatus`. Strips latitude/longitude/score from output, filters out profiles blocked in either direction, and records a server-side `search_completed` event (with `ranking: semantic\|keyword`). Ranking quality is measured by `deno task eval` (`insforge/eval/ranking-eval.ts`). |
-| `connection-request` | Sends a connection request from the caller to `recipientId` with a `sourceQuery`. Idempotent: a retry returns the existing row with `created: false`. Enforces 409s `INCOMING_REQUEST_EXISTS`, `ALREADY_CONNECTED`, and `RECIPIENT_UNAVAILABLE`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `connection-inbox`   | Returns the caller's connections split into `incoming` and `outgoing`, each joined with the other party's public profile fields (name, avatar, headline, location, LinkedIn URL).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `connection-respond` | Accepts or declines a pending incoming request (`connectionId` + `action: accept \| decline`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `profile-safety`     | `block` or `report` a profile (report reasons: `spam`, `harassment`, `misleading`, `unsafe`, `other`, plus optional free-text details). Writes `profile_blocks` / `profile_reports` and a product event.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `track-event`        | Records client analytics events into `product_events`. Only `sign_in_completed`, `profile_completed`, and `profile_updated` are accepted from the client; other events are written server-side by the functions above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `moderation-console` | Admin-only (issue #68): `queue` lists open `profile_reports` and recent `profile_blocks` joined with profile summaries; `resolve` marks a report `resolved`/`dismissed` (optionally setting the reported profile `is_discoverable=false`). Callers must be signed in **and** their email must be in `BREA_ADMIN_EMAILS`, otherwise `403 FORBIDDEN`. Served to the `/admin` page of the SPA.                                                                                                                                                                                                                                                                                                                               |
+| Slug                  | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `people-search`       | Nearby-people search. Ranks discoverable/available profiles within a radius (haversine distance) by embedding cosine similarity (OpenRouter `nvidia/nemotron-3-embed-1b:free`, cached per-profile in `profiles.embedding`/`embedding_hash`), falling back to weighted keyword matching when `OPENROUTER_API_KEY` is unset or the gateway errors. Returns an evidence-based `matchReason`, `distanceKm`, and a bidirectional `connectionStatus`. Strips latitude/longitude/score from output, filters out profiles blocked in either direction, and records a server-side `search_completed` event (with `ranking: semantic\|keyword`). Ranking quality is measured by `deno task eval` (`insforge/eval/ranking-eval.ts`). |
+| `connection-request`  | Sends a connection request from the caller to `recipientId` with a `sourceQuery`. Idempotent: a retry returns the existing row with `created: false`. Enforces 409s `INCOMING_REQUEST_EXISTS`, `ALREADY_CONNECTED`, and `RECIPIENT_UNAVAILABLE`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `connection-inbox`    | Returns the caller's connections split into `incoming` and `outgoing`, each joined with the other party's public profile fields (name, avatar, headline, location, LinkedIn URL).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `connection-respond`  | Accepts or declines a pending incoming request (`connectionId` + `action: accept \| decline`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `connection-messages` | 1:1 messaging inside an accepted connection (issue #66). `action: list` returns the newest 200 messages for a `connectionId`, oldest first (fixed window, no cursor); `action: send` appends one message after trimming, rejecting an empty body or one over 2000 characters. The caller must be a participant of a connection that is `accepted` with no block in either direction; every other case — unknown id, non-participant, still pending or declined, blocked — collapses into the same `404 CONVERSATION_NOT_FOUND` so nothing about other people's connections leaks. Writes to the server-only `messages` table and records no product event.                                                                |
+| `profile-safety`      | `block` or `report` a profile (report reasons: `spam`, `harassment`, `misleading`, `unsafe`, `other`, plus optional free-text details). Writes `profile_blocks` / `profile_reports` and a product event.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `track-event`         | Records client analytics events into `product_events`. Only `sign_in_completed`, `profile_completed`, and `profile_updated` are accepted from the client; other events are written server-side by the functions above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `moderation-console`  | Admin-only (issue #68): `queue` lists open `profile_reports` and recent `profile_blocks` joined with profile summaries; `resolve` marks a report `resolved`/`dismissed` (optionally setting the reported profile `is_discoverable=false`). Callers must be signed in **and** their email must be in `BREA_ADMIN_EMAILS`, otherwise `403 FORBIDDEN`. Served to the `/admin` page of the SPA.                                                                                                                                                                                                                                                                                                                               |
 
 ## Database and migrations
 
-Tables (parent, 2026-07-20): `profiles`, `connections`, `product_events`, `profile_blocks`,
-`profile_reports`. Migration files live in **`migrations/` at the repo root** (not under
-`insforge/`). Four are applied on the parent, in order:
+Tables (parent, 2026-07-23): `profiles`, `connections`, `messages`, `product_events`,
+`profile_blocks`, `profile_reports`. Migration files live in **`migrations/` at the repo root** (not
+under `insforge/`). Ten are applied on the parent, in order:
 
 - `20260719000100_brea-mvp`
 - `20260719063613_linkedin-auth-profiles`
 - `20260719064643_profile-provisioning-trigger`
 - `20260719073000_authenticated-connection-lifecycle` — the connection-lifecycle migration (inbox /
-  respond / block / report / events). This is the newest schema and is the migration the retired
-  branch is missing.
-
+  respond / block / report / events). This is the migration the retired branch is missing.
+- `20260720103739_profile-reports-reporter-index` — index on `profile_reports.reporter_profile_id`
+  so an `ON DELETE SET NULL` profile delete no longer seq-scans the table.
+- `20260721120000_connection-messages` — the server-only `messages` table behind the
+  `connection-messages` function (#66).
 - `20260722102300_profile-embeddings` — adds `profiles.embedding` / `profiles.embedding_hash` for
   semantic search (#69); written and applied only by the server-side admin client, though the
   pre-existing table-wide `GRANT SELECT ... TO authenticated` + own-row RLS policy means a member
   can read the columns on their own row. Rollback note: revert the `people-search` function deploy
   _before_ dropping these columns — the function hard-selects them, so dropping first turns every
   search into a 500.
+- `20260722102301_profile-photos` — the ordered `profiles.photos` gallery (max six) plus the
+  owner-scoped storage policies for the `profile-photos` bucket (#67). See "Profile photo storage"
+  below.
+- `20260723095843_profile-reports-resolution` — `status` / `resolved_at` / `resolved_by` on
+  `profile_reports` for the moderation console (#68).
+- `20260723095844_add-messages-sender-index` — FK index on `messages.sender_id` so a cascading
+  profile delete does not scan the whole table.
 
 Workflow:
 
@@ -113,7 +123,7 @@ npx @insforge/cli config apply --file insforge.toml
 
 `config apply` is production-affecting and human-gated. If its output reports
 `storage.max_file_size_mb` in `skipped[]`, stop and upgrade the backend rather than bypassing the
-CLI. After the bucket and config exist, apply `20260721170000_profile-photos` through the normal
+CLI. After the bucket and config exist, apply `20260722102301_profile-photos` through the normal
 guarded migration workflow, then deploy the updated `people-search` and `connection-inbox`
 functions:
 
@@ -153,9 +163,9 @@ needed. `secrets update` is human-gated in agent auto mode.
 - **`BREA_ADMIN_EMAILS`** (app secret) — comma-separated, case-insensitive email allowlist for the
   `moderation-console` function. Empty/unset means nobody is an admin (the console fails closed).
   This is the interim admin auth posture until OPS-02 (#26) lands a real role model.
-- **`BREA_MVP_PROFILE_ID`** — **dead.** No deployed function reads it (the auth pivot removed the
-  last reader). It is pending removal under **issue #29**; do not use it and do not re-add it to any
-  new environment.
+- **`BREA_MVP_PROFILE_ID`** — **removed.** The auth pivot took out its last reader, and the secret
+  itself was deleted from this project under **issue #29** (closed). Do not re-add it to any new
+  environment.
 - **Reserved / InsForge-managed** (present, do not expose to browser code): `API_KEY`,
   `INSFORGE_BASE_URL`, `ANON_KEY`, the `JWT_*` keys, and `VERCEL_WEBHOOK_SECRET`. Functions read
   `INSFORGE_BASE_URL` + `API_KEY` to build their admin client.
@@ -204,8 +214,7 @@ frontend origins.
 first can emit connection statuses an older frontend does not understand. This ordering is a
 protected rule for every release.
 
-Local type-check before deploying (requires Deno, which is not installed in this repo yet — see
-TEST-01):
+Local type-check before deploying (requires Deno — see TEST-01):
 
 ```sh
 deno task --config insforge/deno.json check
@@ -246,38 +255,31 @@ in `connections`); `connection-inbox` shows the request; `connection-respond` ac
   (clear cookies for the `35byng5f` host); still broken ⇒ platform-side, check the fingerprints
   above.
 
-## Retiring the `linkedin-auth` branch
+## Retiring the `linkedin-auth` branch — done
 
 **Decision (2026-07-20, issue #27):** delete the `linkedin-auth` backend branch and treat the parent
-as the sole backend (this runbook). This is recorded here and gated on a human running the deletion.
+as the sole backend (this runbook).
 
-Why it is safe:
+**The deletion is done and issue #27 is closed.** `npx @insforge/cli branch list` returns
+`No branches` (re-verified 2026-07-23). There is no open action here and no branch left to delete —
+what follows is kept only as the record of why removing it was safe.
 
 - The branch (`linkedin-auth`, app key `35byng5f-g8u`, mode `full`, hosts
   `https://35byng5f-g8u.ap-southeast.insforge.app` / `https://35byng5f-g8u.function2.insforge.app`,
   parent `135081c0-...`) was a full copy made 2026-07-19.
-- No deployed frontend points at the `35byng5f-g8u` hosts; everything targets the parent.
-- The branch is **behind**: it is missing migration `20260719073000` and the four newer function
-  deploys (it predates the connection-lifecycle work and had only `people-search` +
-  `connection-request`).
-- Its **only unique asset** was a replicated LinkedIn OAuth config. The parent now has that config
-  live — verified 2026-07-20: `linkedin` appears in both `curl .../api/auth/public-config` and
-  `metadata --json` `oAuthProviders`.
+- No deployed frontend pointed at the `35byng5f-g8u` hosts; everything targeted the parent.
+- The branch was **behind**: it never received migration `20260719073000` or any migration after it,
+  and it carried only `people-search` + `connection-request` — it predated the connection-lifecycle
+  work and every function added since.
+- Its **only unique asset** was a replicated LinkedIn OAuth config, which used InsForge shared keys
+  (`useSharedKey: true`) and therefore held no unrecoverable client secret. The parent carries that
+  config live — `linkedin` appears in both `curl .../api/auth/public-config` and `metadata --json`
+  `oAuthProviders`.
 
-**Deletion command — HUMAN step (destructive, not for an agent in auto mode):**
-
-```sh
-npx @insforge/cli branch delete linkedin-auth
-```
-
-The command prompts for confirmation. If it is ever run through the agent CLI wrapper, attach the
-approval flags (`--reason`, `--impact`, `--recommendation`) so the human approver sees the intent;
-`-y` skips the prompt only after human sign-off.
-
-Double-check immediately before deleting:
-
-- `npx @insforge/cli branch list` shows `linkedin-auth` is the branch being removed (app key
-  `35byng5f-g8u`) and nothing on it is unmerged or otherwise still needed.
-- No Vercel env var or frontend build still references any `35byng5f-g8u` host.
-- The parent is healthy and complete: `public-config` still lists `linkedin`, `functions list` shows
-  all six functions, and `db migrations list` shows `20260719073000` applied.
+Should a backend branch ever be created again, deleting it is destructive and human-gated: run
+`npx @insforge/cli branch delete <name>` yourself rather than through an agent in auto mode, and if
+it does go through the agent CLI wrapper, attach `--reason`, `--impact`, and `--recommendation` so
+the human approver sees the intent (`-y` skips the prompt only after human sign-off). Before
+deleting, confirm the branch holds nothing unmerged, that no Vercel env var or frontend build
+references its hosts, and that the parent is healthy — `public-config` still lists `linkedin`,
+`functions list` shows all eight functions, and `db migrations list` shows the full set applied.
