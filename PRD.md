@@ -127,7 +127,7 @@ support, not a claim that the person will respond or is personally compatible.
 
 The pipeline gives the member a portfolio-level view above individual LinkedIn message threads:
 
-```other
+```text
 Suggested → Shortlisted → Approached → Waiting → Replied → Scheduling
           → Confirmed → Met → Follow-up
 ```
@@ -227,7 +227,7 @@ avoids requiring a populated feed at launch.
 
 The proposed product loop is:
 
-```other
+```text
 Curated invitation → LinkedIn-verified RSVP → useful in-person activity
         → private shortlist / mutual interest → Approach Copilot
         → Meeting Pipeline → confirmed 1:1 meeting → follow-up
@@ -305,7 +305,7 @@ should not require a generic global feed to create value.
 
 #### Personality-to-meeting product loop
 
-```other
+```text
 Share personality → richer evidence for matching and shortlisting
         → more specific approach angle → higher-quality conversation
         → reply / mutual interest → confirmed meeting
@@ -461,13 +461,13 @@ database trigger: `pending → accepted|declined`, `accepted → declined`, and 
 
 Request body:
 
-```other
+```ts
 { recipientId: string /* UUID */, sourceQuery: string /* 2–200 chars */ }
 ```
 
 Success (200):
 
-```other
+```ts
 type ConnectionResponse = {
   id: string;
   recipientId: string;
@@ -505,29 +505,25 @@ Error responses use `{ code, message }`. The full set for this Function:
 
 Request body: `{}`. Returns the caller's incoming and outgoing requests, newest first:
 
-```other
+```ts
 type ConnectionInboxResponse = { incoming: ConnectionItem[]; outgoing: ConnectionItem[] };
-```
 
 type ConnectionItem = {
-id: string;
-direction: "incoming" | "outgoing";
-status: "pending" | "accepted" | "declined";
-sourceQuery: string;
-createdAt: string;
-respondedAt: string | null;
-person: {
-id: string;
-name: string;
-avatarUrl: string | null;
-headline: string | null;
-locationLabel: string | null;
-linkedinProfileUrl: string | null; // revealed only when status === "accepted"
+  id: string;
+  direction: "incoming" | "outgoing";
+  status: "pending" | "accepted" | "declined";
+  sourceQuery: string;
+  createdAt: string;
+  respondedAt: string | null;
+  person: {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+    headline: string | null;
+    locationLabel: string | null;
+    linkedinProfileUrl: string | null; // revealed only when status === "accepted"
+  };
 };
-};
-
-```other
-
 ```
 
 ### 8.3 Respond to a request — `connection-respond`
@@ -554,7 +550,7 @@ accepts the legacy value `"pending"` and treats it as `outgoing_pending`.
 
 One POST Function lists or sends messages:
 
-```other
+```ts
 type MessagesInput =
   | { action: "list"; connectionId: string }
   | { action: "send"; connectionId: string; body: string /* 1–2000 chars after trimming */ };
@@ -619,7 +615,7 @@ name to exactly this set:
 
 ## 12. Core User Flow
 
-```other
+```text
 Open Brea
    ↓
 Sign in with LinkedIn
@@ -680,26 +676,22 @@ allowlist, handles `OPTIONS`, and returns errors as `{ code, message }`. Member-
 resolve the actor through `profiles.user_id` server-side and never trust a browser-supplied identity; `moderation-console` instead authorizes the authenticated email against the server-side admin
 allowlist. `people-search` shape:
 
-```other
+```ts
 type PeopleSearchResponse = { results: PersonMatch[] };
-```
 
 type PersonMatch = {
-id: string;
-name: string;
-avatarUrl: string | null;
-headline: string;
-bio: string | null;
-distanceKm: number;                 // rounded to 0.1 km
-skills: string[];
-interests: string[];
-availability: string | null;
-matchReason: string;
-connectionStatus: "none" | "outgoing_pending" | "incoming_pending" | "accepted";
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  headline: string;
+  bio: string | null;
+  distanceKm: number; // rounded to 0.1 km
+  skills: string[];
+  interests: string[];
+  availability: string | null;
+  matchReason: string;
+  connectionStatus: "none" | "outgoing_pending" | "incoming_pending" | "accepted";
 };
-
-```other
-
 ```
 
 An empty search returns `{ "results": [] }`. Results arrive already ranked; the frontend does not
@@ -872,7 +864,7 @@ North-star metric:
 
 Pilot funnel:
 
-```other
+```text
 Invited → RSVP → Attended → Private shortlist → Mutual interest
         → Follow-up sent → Meeting confirmed → Meeting completed
         → Second meeting or continued contact
