@@ -6,8 +6,10 @@
 > geolocation, connection acceptance, and safety were out of scope. The product later **pivoted to an
 > authenticated model** and shipped it (live at <https://brea-replace-ditto.vercel.app>). It is kept
 > intact for history; the ticket structure, dependency map, and timeline still show how the work was
-> sequenced. For the contract that is actually shipped, read **`PRD.md` (v2.0)** — it is the source of
-> truth. Statements below that the pivot invalidated are annotated **_Superseded (2026-07)_** inline.
+> sequenced. For the current Production truth, read **`docs/product/CURRENT_STATE.md`**. The full
+> authenticated-release contract is preserved as
+> **`docs/archive/PRD_V2_AUTHENTICATED_RELEASE.md`**. Statements below that the pivot invalidated are
+> annotated **_Superseded (2026-07)_** inline.
 
 ## Locked Decisions
 
@@ -22,8 +24,9 @@ unmarked; those the authenticated pivot changed carry an inline superseded note.
 - Frontend hosting: Vercel static deployment with Git integration. — **_Superseded (2026-07):_** the
   live site is deployed from local `vite build` output (no Git auto-deploy is wired yet).
 - Backend: InsForge Postgres and Deno Edge Functions. _(Still true.)_
-- Function slugs: `people-search` and `connection-request`. — **_Superseded (2026-07):_** six Functions
-  ship — add `connection-inbox`, `connection-respond`, `profile-safety`, and `track-event`.
+- Function slugs: `people-search` and `connection-request`. — **_Superseded (2026-07):_** eight
+  Functions ship — add `connection-inbox`, `connection-respond`, `connection-messages`,
+  `profile-safety`, `track-event`, and `moderation-console`.
 - Data boundary: frontend invokes Functions only; it cannot directly read or write base tables. —
   **_Superseded (2026-07):_** members now read/write **their own** `profiles` row directly under RLS;
   all other tables remain Functions-only.
@@ -105,15 +108,17 @@ flowchart LR
 - Dependencies: Vercel and InsForge access available
 
 > **_Superseded (2026-07)._** This ticket froze the anonymous contract. It was **re-frozen to the
-> authenticated model** in `PRD.md` v2.0 (GitHub issue #3). The original criteria are kept for history;
+> authenticated model** in the archived PRD v2.0 (GitHub issue #3). The original criteria are kept for history;
 > superseded ones are marked below.
 
 Acceptance criteria:
 
 - [x] Product core is recorded as “find suitable people nearby.” _(Still true.)_
-- [x] Function slugs are frozen as `people-search` and `connection-request`. — **_Superseded:_** six
-  Functions are frozen (see `PRD.md` §14).
-- [x] Search, connection, and error JSON match `PRD.md`. _(Re-frozen to `PRD.md` v2.0.)_
+- [x] Function slugs are frozen as `people-search` and `connection-request`. — **_Superseded:_** the
+  authenticated release later expanded the Function inventory; see
+  `docs/technical/DATA_SECURITY_AND_FUNCTIONS.md`.
+- [x] Search, connection, and error JSON match the archived PRD v2.0. _(See the current technical
+  contracts for the active interface.)_
 - [x] Radius is fixed at 10 km for the initial UI. — **_Superseded:_** radius is member-adjustable
   1–50 km, defaulting to 10 km.
 - [x] `BREA_MVP_PROFILE_ID` is confirmed as a server-side-only identity. — **_Superseded:_** replaced by
@@ -126,7 +131,8 @@ Acceptance criteria:
 - [ ] Login, maps, chat, Share Marketplace, vector search, and production auth remain out of scope. —
   **_Superseded:_** login (LinkedIn OAuth), per-user profiles, browser geolocation, an accept/decline
   inbox, and block/report all **shipped**. Chat, notifications, maps, the Share Marketplace, and
-  vector search remain out of scope (see `PRD.md` §19).
+  vector search were out of scope at that point (see the archived PRD v2.0 for the historical
+  contract and `docs/product/CURRENT_STATE.md` for what subsequently shipped).
 
 ## Frontend / PM-Design Tickets
 

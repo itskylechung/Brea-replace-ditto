@@ -1,4 +1,4 @@
-# Brea Web MVP
+# Brea Web
 
 Brea helps a signed-in member find suitable people nearby, understand why each result is relevant, start a connection, and continue the conversation. The shipped web app includes profile galleries, semantic search with a deterministic fallback, a Requests inbox, accepted-connection messaging, safety controls, and an admin moderation surface.
 
@@ -53,7 +53,7 @@ The frontend uses InsForge auth (`signInWithOAuth("linkedin")` for OAuth/PKCE si
 
 Members read and write only their own `profiles` row directly under row-level security. Profile photos use the public-read `profile-photos` bucket with owner-scoped upload/delete policies; the profile stores both URL and storage key. All connection, message, moderation, safety, and analytics tables are server-only.
 
-Each Function verifies the caller's bearer token, resolves the actor through `profiles.user_id`, and never trusts a browser-supplied identity. Search uses exact coordinates server-side but returns only rounded distance. Function errors use `{ code, message }`. See [PRD.md](./PRD.md) for the complete shipped contract and [insforge/BACKEND_RUNBOOK.md](./insforge/BACKEND_RUNBOOK.md) for deployment order and operational checks.
+Each Function verifies the caller's bearer token, resolves the actor through `profiles.user_id`, and never trusts a browser-supplied identity. Search uses exact coordinates server-side but returns only rounded distance. Function errors use `{ code, message }`. See the [technical contracts](./docs/technical/DATA_SECURITY_AND_FUNCTIONS.md) for the complete shipped boundary and [insforge/BACKEND_RUNBOOK.md](./insforge/BACKEND_RUNBOOK.md) for deployment order and operational checks.
 
 ## LinkedIn OAuth setup
 
@@ -95,7 +95,7 @@ Shipped and in scope:
 - Per-card hide (block) and report; product-event tracking.
 - Admin-only `/admin` moderation queue, protected by `BREA_ADMIN_EMAILS`.
 
-Under validation or not shipped (see [PRD.md](./PRD.md) for the roadmap and validation plan):
+Under validation or not shipped (see the [Product Roadmap](./docs/product/ROADMAP.md)):
 
 - Notifications (email or push).
 - Events, feed, vouches, verification badges, passive discovery, and the broader relationship-activation workflow.
@@ -111,4 +111,4 @@ Under validation or not shipped (see [PRD.md](./PRD.md) for the roadmap and vali
 - Hidden profiles cannot currently be unblocked by the member without an admin/service operation.
 - InsForge request stalls, intermittent `502 BOOT_FAILED`, cold starts, and large/concurrent diagnostic 504s remain tracked operational risks.
 
-Start with [HANDOFF.md](./HANDOFF.md) when taking over the project. [PRD.md](./PRD.md) is the product contract, [insforge/BACKEND_RUNBOOK.md](./insforge/BACKEND_RUNBOOK.md) is the operational source of truth, and [docs/METRICS.md](./docs/METRICS.md) contains the M1 funnel queries. [USER_FLOW.md](./USER_FLOW.md) and [MVP_PLAN.md](./MVP_PLAN.md) capture the original anonymous two-hour plan and are retained for history.
+Start with [PRODUCT.md](./PRODUCT.md) for the product foundation and documentation map, [CURRENT_STATE.md](./docs/product/CURRENT_STATE.md) for the Production product truth, and [HANDOFF.md](./HANDOFF.md) when taking over engineering work. [insforge/BACKEND_RUNBOOK.md](./insforge/BACKEND_RUNBOOK.md) is the operational source of truth, and [docs/METRICS.md](./docs/METRICS.md) owns metric definitions and preserves the M1 query pack. The [archived PRD v2.0](./docs/archive/PRD_V2_AUTHENTICATED_RELEASE.md), [USER_FLOW.md](./USER_FLOW.md), and [MVP_PLAN.md](./MVP_PLAN.md) retain historical contracts and plans.

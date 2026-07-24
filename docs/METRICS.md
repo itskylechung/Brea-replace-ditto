@@ -1,9 +1,169 @@
-# Brea M1 funnel metrics
+# Brea Product Metrics
 
-A copy-paste query pack for the M1 activation funnel — sign-in -> profile
-completion -> first search -> connection — plus a 7-day active-searcher gauge.
-Every query reads only tables and event names that exist in `migrations/` and in
-the deployed InsForge functions; there are no invented columns or events.
+| Field | Value |
+| --- | --- |
+| Status | Active metric contract; outcome instrumentation incomplete |
+| Last reviewed | 2026-07-24 |
+| Product foundation | [PRODUCT.md](../PRODUCT.md) |
+
+This document is the single source of truth for Brea metric definitions, availability, guardrails,
+and runnable baseline queries. Roadmaps and Epics reference metric IDs instead of creating local
+definitions.
+
+## Metric hierarchy
+
+| ID | Metric | Role | Availability |
+| --- | --- | --- | --- |
+| `NSM-001` | Mutually confirmed meetings per activated member within 28 days | Future North Star | Not measurable; meeting confirmation is not shipped |
+| `OPM-001` | Bidirectional conversations per activated member within 14 days | Current operating metric | Derivable from profiles, events, connections, and messages; not yet dashboarded |
+| `ACT-001` | Activated members | Denominator / activation | Partially measurable |
+| `DSC-001` | Searches returning at least one eligible result | Discovery input | Measurable from `search_completed` properties |
+| `CON-001` | Request-to-accept conversion | Mutual-intent input | Measurable from `connections` |
+| `SAFE-001` | Reports and blocks per 100 meaningful connections | Guardrail | Measurable with server-only tables |
+
+## `NSM-001` — mutually confirmed meetings
+
+### Definition
+
+> Unique mutually confirmed meeting records divided by activated members over a rolling 28-day
+> window.
+
+### Numerator
+
+A unique meeting between at least two different people with an explicit purpose, time, general
+place, and confirmation from all required participants. A record is counted once, regardless of
+participant count.
+
+### Denominator
+
+Unique members satisfying `ACT-001` in the same measurement window.
+
+### Exclusions
+
+- Cancelled meetings.
+- Test, fixture, and admin accounts.
+- Duplicate meeting records.
+- Events without a separate agreed follow-up meeting.
+- Meetings lacking mutual confirmation.
+
+### Guardrails
+
+- Reports and blocks following confirmation.
+- Cancellation and no-show rate.
+- Safety incidents.
+- Median time from discovery or event to confirmation.
+
+### Availability
+
+Not measurable. Brea has no meeting proposal, confirmation, completion, or cancellation data model.
+Do not substitute connection acceptance and label it as a meeting.
+
+## `OPM-001` — bidirectional conversations
+
+### Definition
+
+> Unique accepted connections in which both participants sent at least one message, divided by
+> activated members over a rolling 14-day window.
+
+### Numerator
+
+Unique `connection_id` values with:
+
+- current `accepted` connection status;
+- at least one message from each participant; and
+- qualifying messages inside the 14-day window.
+
+### Denominator
+
+Unique members satisfying `ACT-001` in the same window.
+
+### Exclusions
+
+- Test, fixture, and admin accounts.
+- Pending, declined, or blocked relationships.
+- One-sided message threads.
+
+### Availability
+
+The source tables exist, but the metric is not yet productionized. Test-account exclusion and
+activation timestamps need a durable contract before a dashboard becomes authoritative.
+
+## `ACT-001` — activated member
+
+A member is activated when they:
+
+1. signed in with LinkedIn;
+2. completed onboarding;
+3. have private coordinates and can use nearby discovery; and
+4. completed at least one valid nearby search or, in a future pilot, attended a qualifying Brea
+   event.
+
+The shipped event vocabulary can identify profile completion and search but does not persist a
+single canonical `activated_at`. Current queries therefore use profile completeness plus a search
+event as a proxy.
+
+## Input metric tree
+
+### Acquisition
+
+- Invitation or referral → LinkedIn sign-in.
+- Sign-in → profile completion.
+- Cost and operator time per activated member.
+
+### Activation and discovery
+
+- Profile completion → private location.
+- Private location → first search.
+- Searches with at least one result.
+- Empty-result and broaden-radius rates.
+- Result → connection request.
+
+### Mutual intent and conversation
+
+- Request → accept or decline.
+- Median response time.
+- Accepted connection → first message.
+- First message → reply.
+- Bidirectional conversations.
+
+### Future meeting conversion
+
+- Mutual interest → follow-up.
+- Follow-up → scheduling.
+- Scheduling → confirmed.
+- Confirmed → completed.
+- Second meeting or continued contact.
+
+### Safety guardrails
+
+- Reports and blocks per 100 activated members, accepted connections, and future meetings.
+- Repeat contact after decline.
+- Moderation response and resolution time.
+- Event incidents, removals, appeals, and safety-related churn.
+
+## Shipped event vocabulary
+
+Client-originated events go through `track-event`; the remaining events are server-written by their
+owning Function. The database constraint accepts only:
+
+- `sign_in_completed`
+- `profile_completed`
+- `profile_updated`
+- `search_completed`
+- `connection_requested`
+- `connection_responded`
+- `profile_hidden`
+- `profile_reported`
+
+Proposed event, shortlist, invitation, conversation, and meeting names are not valid Production
+events until both the Function allowlist and database constraint change.
+
+## M1 baseline query pack
+
+The following copy-paste queries preserve the M1 activation funnel — sign-in → profile completion →
+first search → connection — plus a seven-day active-searcher gauge. Every query reads only tables
+and event names that exist in `migrations/` and deployed Functions; there are no invented columns or
+events.
 
 ## How to run
 
@@ -136,7 +296,7 @@ the developer account's 5 `sign_in_completed` events likewise predate a
 completed client funnel. The 100% acceptance rate is one accepted E2E fixture
 connection over two still-pending requests.
 
-## Known gaps
+## Known measurement gaps
 
 - **Welcome-intro skip vs. completion is not measurable today.** The
   `track-event` allowlist (`CLIENT_EVENT_NAMES` in
@@ -146,3 +306,20 @@ connection over two still-pending requests.
   new client event added both to that allowlist and to the
   `product_events.event_name` CHECK constraint. That is a backend change gated by
   OPS-02 (#26).
+- **`OPM-001` is not dashboarded.** The `messages` table can identify two-sided threads, but the
+  team still needs durable fixture/admin exclusion and activation-window rules.
+- **`NSM-001` is aspirational.** No meeting proposal, mutual confirmation, cancellation, completion,
+  or follow-up records exist.
+- **Request-response latency is derivable but not included in the frozen M1 pack.** Use
+  `connections.created_at` and `responded_at` when the operating dashboard is implemented.
+- **Safety rates need stable denominators.** Raw block/report counts exist; per-100-member,
+  per-connection, and future per-meeting definitions must remain distinct.
+
+## Definition change policy
+
+- Product owns the meaning and intended behavior of each metric.
+- Engineering owns event/data correctness and query reproducibility.
+- A metric-definition change requires a reviewed PR with numerator, denominator, window,
+  exclusions, source, and migration impact.
+- Historical baselines are never rewritten to fit a new definition.
+- A proposed metric is labeled unavailable until its source data is verified in Production.
